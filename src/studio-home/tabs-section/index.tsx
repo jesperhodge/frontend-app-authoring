@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
+  Badge,
   Stack,
   Tab,
   Tabs,
@@ -90,6 +91,7 @@ const TabsSection = ({
           title={(
             <Stack gap={2} direction="horizontal">
               {intl.formatMessage(messages.librariesTabTitle)}
+              <Badge variant="info">{intl.formatMessage(messages.librariesV2TabBetaBadge)}</Badge>
             </Stack>
           )}
         >

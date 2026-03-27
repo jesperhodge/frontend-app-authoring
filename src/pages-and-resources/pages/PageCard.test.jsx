@@ -1,14 +1,13 @@
 import { getConfig } from '@edx/frontend-platform';
 
-import { getApiWaffleFlagsUrl } from '@src/data/api';
 import {
   initializeMocks,
   screen,
   render,
   waitFor,
-} from '@src/testUtils';
-
+} from '../../testUtils';
 import PageGrid from './PageGrid';
+import { getApiWaffleFlagsUrl } from '../../data/api';
 
 import PagesAndResourcesProvider from '../PagesAndResourcesProvider';
 
@@ -50,7 +49,9 @@ describe('LiveSettings', () => {
     axiosMock
       .onGet(getApiWaffleFlagsUrl(courseId))
       .reply(200, {
+        useNewGradingPage: true,
         useNewCertificatesPage: true,
+        useNewScheduleDetailsPage: true,
         useNewCourseOutlinePage: true,
       });
   });

@@ -1,7 +1,7 @@
 import { useIntl } from '@edx/frontend-platform/i18n';
 
 import { Container } from '@openedx/paragon';
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import { useCourseAuthoringContext } from '@src/CourseAuthoringContext';
@@ -10,8 +10,6 @@ import Placeholder from '@src/editors/Placeholder';
 import { RequestStatus } from '@src/data/constants';
 import getPageHeadTitle from '@src/generic/utils';
 import EditFileAlertsSlot from '@src/plugin-slots/EditFileAlertsSlot';
-import { AlertAgreementGatedFeature } from '@src/generic/agreement-gated-feature';
-import { AgreementGated } from '@src/constants';
 
 import { EditFileErrors } from '../generic';
 import { fetchAssets, resetErrors } from './data/thunks';
@@ -56,9 +54,6 @@ const FilesPage = () => {
           deleteFileStatus={deleteAssetStatus}
           updateFileStatus={updateAssetStatus}
           loadingStatus={loadingStatus}
-        />
-        <AlertAgreementGatedFeature
-          gatingTypes={[AgreementGated.UPLOAD, AgreementGated.UPLOAD_FILES]}
         />
         <EditFileAlertsSlot />
         <div className="h2">

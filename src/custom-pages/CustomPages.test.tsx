@@ -62,7 +62,9 @@ describe('CustomPages', () => {
     axiosMock
       .onGet(getApiWaffleFlagsUrl(courseId))
       .reply(200, {
+        useNewGradingPage: true,
         useNewCertificatesPage: true,
+        useNewScheduleDetailsPage: true,
         useNewCourseOutlinePage: true,
       });
   });

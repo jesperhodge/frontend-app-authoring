@@ -1,6 +1,4 @@
-import { AgreementGated } from '@src/constants';
-import { AlertAgreementGatedFeature } from '@src/generic/agreement-gated-feature';
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import { useDispatch, useSelector } from 'react-redux';
 
@@ -58,9 +56,6 @@ const VideosPage = () => {
           deleteFileStatus={deleteVideoStatus}
           updateFileStatus={updateVideoStatus}
           loadingStatus={loadingStatus}
-        />
-        <AlertAgreementGatedFeature
-          gatingTypes={[AgreementGated.UPLOAD, AgreementGated.UPLOAD_VIDEOS]}
         />
         <EditVideoAlertsSlot />
         <h2>{intl.formatMessage(messages.heading)}</h2>
