@@ -19,13 +19,8 @@ const SaveErrorAlert = ({ draftError, isError, isUpdateError }: SaveErrorAlertPr
   const [alertOpen, setAlertOpen] = React.useState(hasError);
 
   useEffect(() => {
-    if (hasError) {
-      setAlertOpen(true);
-    }
-    if (!hasError) {
-      setAlertOpen(false);
-    }
-  }, [hasError, isError, isUpdateError, draftError]);
+    setAlertOpen(hasError);
+  }, [hasError]);
 
   if (!alertOpen) { return null; }
 

@@ -6,16 +6,17 @@ import React, {
 import type { PaginationState } from '@tanstack/react-table';
 import { TableView } from '@src/taxonomy/tree-table';
 import { useTagListData, useCreateTag, useUpdateTag } from '@src/taxonomy/data/apiHooks';
-import { TagTree } from './tagTree';
 import type {
   RowId,
-  TreeColumnDef,
   TreeRowData,
-} from '../tree-table/types';
+  TreeTable,
+} from '@src/taxonomy/tree-table/types';
+import { TagTree } from './tagTree';
 import {
   TABLE_MODES,
 } from './constants';
-import { getColumns } from './tagColumns';
+import { useTagColumns } from './tagColumns';
+import { TagListContext } from './TagListContext';
 import { useTableModes, useEditActions } from './hooks';
 
 interface TagListTableProps {
@@ -47,8 +48,9 @@ const TagListTable = ({ taxonomyId, maxDepth }: TagListTableProps) => {
   const [toast, setToast] = useState({ show: false, message: '', variant: 'success' });
   const [tagTree, setTagTree] = useState<TagTree | null>(null);
   const [isCreatingTopTag, setIsCreatingTopTag] = useState(false);
-  const [activeActionMenuRowId, setActiveActionMenuRowId] = useState<RowId | null>(null);
   const [draftError, setDraftError] = useState('');
+  const [table, setTable] = useState<TreeTable | null>(null);
+
   const treeData = (tagTree?.getAllAsDeepCopy() || []) as unknown as TreeRowData[];
   const hasOpenDraft = isCreatingTopTag || creatingParentId !== null || editingRowId !== null;
 
@@ -81,8 +83,6 @@ const TagListTable = ({ taxonomyId, maxDepth }: TagListTableProps) => {
   const updateTagMutation = useUpdateTag(taxonomyId);
   const pageCount = tagList?.numPages ?? -1;
 
-  // TODO: to make this more readable, introduce a React context for the TagListTable instead of passing props.
-
   // Custom Edit Actions Hook - handles table mode transitions, API calls,
   // and updating the table without a full data reload when creating or editing tags.
   const { handleCreateTag, handleUpdateTag, validate } = useEditActions({
@@ -98,40 +98,39 @@ const TagListTable = ({ taxonomyId, maxDepth }: TagListTableProps) => {
     setEditingRowId,
   });
 
-  const columns = useMemo<TreeColumnDef[]>(
-    () => getColumns({
-      setIsCreatingTopTag,
-      setCreatingParentId,
-      handleUpdateTag,
-      setEditingRowId,
-      onStartDraft: enterDraftMode,
-      setActiveActionMenuRowId,
-      hasOpenDraft,
-      canAddTag: tagList?.canAddTag !== false,
-      draftError,
-      setDraftError,
-      isSavingDraft: createTagMutation.isPending,
-      maxDepth,
-    }),
-    [
-      isCreatingTopTag,
-      tableMode,
-      activeActionMenuRowId,
-      hasOpenDraft,
-      creatingParentId,
-      tagList?.canAddTag,
-      draftError,
-      createTagMutation.isPending,
-      maxDepth,
-      setIsCreatingTopTag,
-      setCreatingParentId,
-      handleUpdateTag,
-      setEditingRowId,
-      enterDraftMode,
-      setActiveActionMenuRowId,
-      setDraftError,
-    ],
-  );
+  const columns = useTagColumns();
+
+  // eslint-disable-next-line react/jsx-no-constructed-context-values
+  const contextValue = {
+    isCreatingTopTag,
+    setIsCreatingTopTag,
+    creatingParentId,
+    setCreatingParentId,
+    editingRowId,
+    setEditingRowId,
+    draftError,
+    setDraftError,
+    hasOpenDraft,
+    canAddTag: tagList?.canAddTag !== false,
+    maxDepth,
+    createTagMutation,
+    updateTagMutation,
+    handleCreateTag,
+    handleUpdateTag,
+    validate,
+    startDraftMode: enterDraftMode,
+    exitDraftWithoutSave,
+    treeData,
+    pageCount,
+    pagination,
+    handlePaginationChange,
+    isLoading,
+    toast,
+    setToast,
+    columns,
+    table,
+    setTable,
+  };
 
   // RELOAD DATA IN VIEW MODE
   useEffect(() => {
@@ -146,32 +145,9 @@ const TagListTable = ({ taxonomyId, maxDepth }: TagListTableProps) => {
   }, [tagList?.results, tableMode]);
 
   return (
-    <TableView
-      {...{
-        treeData,
-        columns,
-        pageCount,
-        pagination,
-        handlePaginationChange,
-        isLoading,
-        isCreatingTopRow: isCreatingTopTag,
-        draftError,
-        createRowMutation: createTagMutation,
-        updateRowMutation: updateTagMutation,
-        handleCreateRow: handleCreateTag,
-        handleUpdateRow: handleUpdateTag,
-        toast,
-        setToast,
-        setIsCreatingTopRow: setIsCreatingTopTag,
-        exitDraftWithoutSave,
-        creatingParentId,
-        setCreatingParentId,
-        setDraftError,
-        validate,
-        editingRowId,
-        setEditingRowId,
-      }}
-    />
+    <TagListContext.Provider value={contextValue}>
+      <TableView />
+    </TagListContext.Provider>
   );
 };
 

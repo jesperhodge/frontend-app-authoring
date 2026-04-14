@@ -1,6 +1,7 @@
 import React from 'react';
 import { IntlProvider } from '@edx/frontend-platform/i18n';
 import { fireEvent, render, screen } from '@testing-library/react';
+import { TagListContext } from '@src/taxonomy/tag-list/TagListContext';
 
 import { TableView } from './TableView';
 
@@ -19,6 +20,27 @@ const wrapper = ({ children }: { children: React.ReactNode }) => (
   <IntlProvider locale="en" messages={{}}>{children}</IntlProvider>
 );
 
+const baseContext = () => ({
+  isCreatingTopTag: false,
+  setIsCreatingTopTag: jest.fn(),
+  creatingParentId: null,
+  setCreatingParentId: jest.fn(),
+  editingRowId: null,
+  setEditingRowId: jest.fn(),
+  draftError: '',
+  setDraftError: jest.fn(),
+  hasOpenDraft: false,
+  canAddTag: true,
+  maxDepth: 3,
+  createTagMutation: { isPending: false, isError: false },
+  updateTagMutation: { isPending: false, isError: false },
+  handleCreateTag: jest.fn(),
+  handleUpdateTag: jest.fn(),
+  validate: jest.fn(() => true),
+  startDraftMode: jest.fn(),
+  exitDraftWithoutSave: jest.fn(),
+});
+
 const baseProps = () => ({
   treeData: [{ id: 1, value: 'root' }],
   columns: [{ accessorKey: 'value', header: 'Tag name', cell: (info: any) => info.getValue() }],
@@ -26,31 +48,29 @@ const baseProps = () => ({
   pagination: { pageIndex: 0, pageSize: 10 },
   handlePaginationChange: jest.fn(),
   isLoading: false,
-  isCreatingTopRow: false,
-  draftError: '',
-  createRowMutation: { isPending: false, isError: false },
-  updateRowMutation: { isPending: false, isError: false },
   toast: { show: false, message: '', variant: 'success' },
   setToast: jest.fn(),
-  setIsCreatingTopRow: jest.fn(),
-  exitDraftWithoutSave: jest.fn(),
-  handleCreateRow: jest.fn(),
-  creatingParentId: null,
-  setCreatingParentId: jest.fn(),
-  setDraftError: jest.fn(),
-  validate: jest.fn(() => true),
-  handleUpdateRow: jest.fn(),
-  editingRowId: null,
-  setEditingRowId: jest.fn(),
 });
+
+const renderTableView = (props: any, contextOverrides: Record<string, unknown> = {}) => {
+  const context = { ...baseContext(), ...contextOverrides };
+  return render(
+    <TagListContext.Provider value={context as any}>
+      <TableView {...props} />
+    </TagListContext.Provider>,
+    { wrapper },
+  );
+};
 
 describe('TableView', () => {
   it('shows and dismisses save error banner', () => {
     const props = baseProps();
-    props.createRowMutation = { isPending: false, isError: true };
-    props.draftError = 'Request failed with status code 500';
+    const context = {
+      createTagMutation: { isPending: false, isError: true },
+      draftError: 'Request failed with status code 500',
+    };
 
-    render(<TableView {...props} />, { wrapper });
+    renderTableView(props, context);
 
     expect(screen.getByText('Error saving changes')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
@@ -59,14 +79,14 @@ describe('TableView', () => {
 
   it('keeps pagination hidden by default even when multiple pages are reported', () => {
     const props = baseProps();
-    render(<TableView {...props} />, { wrapper });
+    renderTableView(props);
 
     expect(screen.queryByRole('navigation', { name: /table pagination/i })).not.toBeInTheDocument();
   });
 
   it('renders pagination and updates page selection when explicitly enabled', () => {
     const props = baseProps();
-    render(<TableView {...props} enablePagination />, { wrapper });
+    renderTableView({ ...props, enablePagination: true });
 
     expect(screen.getByText('Page 1 of 3')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^page 2$/i }));
@@ -76,7 +96,7 @@ describe('TableView', () => {
   it('hides pagination when there is only one page', () => {
     const props = baseProps();
     props.pageCount = 1;
-    render(<TableView {...props} />, { wrapper });
+    renderTableView(props);
 
     expect(screen.queryByRole('navigation', { name: /table pagination/i })).not.toBeInTheDocument();
   });
@@ -85,7 +105,7 @@ describe('TableView', () => {
     const props = baseProps();
     props.toast = { show: true, message: 'created', variant: 'success' };
 
-    render(<TableView {...props} />, { wrapper });
+    renderTableView(props);
 
     fireEvent.click(screen.getByRole('button', { name: /close/i }));
     expect(props.setToast).toHaveBeenCalled();

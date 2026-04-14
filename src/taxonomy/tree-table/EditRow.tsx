@@ -1,43 +1,43 @@
 import React from 'react';
 import { Row } from '@tanstack/react-table';
-import type { CreateRowMutationState, TreeRowData } from './types';
+import { useTagListContext } from '@src/taxonomy/tag-list/TagListContext';
+import type { TreeRowData } from './types';
 import DraftRow from './DraftRow';
 
 interface EditRowProps {
-  draftError: string;
-  setDraftError: (error: string) => void;
   initialValue: string;
-  handleUpdateRow: (value: string) => void;
-  cancelEditRow: () => void;
-  updateRowMutation: CreateRowMutationState;
   indent?: number;
-  validate: (value: string, mode?: 'soft' | 'hard') => boolean;
   row: Row<TreeRowData>;
 }
 
 const EditRow: React.FC<EditRowProps> = ({
-  draftError,
-  setDraftError,
   initialValue,
-  handleUpdateRow,
-  cancelEditRow,
-  updateRowMutation,
   indent = 0,
-  validate,
   row,
 }) => {
+  const {
+    draftError,
+    setDraftError,
+    handleUpdateTag,
+    setEditingRowId,
+    exitDraftWithoutSave,
+    updateTagMutation,
+    validate,
+  } = useTagListContext();
+
   const handleCancel = () => {
     setDraftError('');
-    cancelEditRow();
+    setEditingRowId(null);
+    exitDraftWithoutSave();
   };
 
   return (
     <DraftRow
       draftError={draftError}
       initialValue={initialValue}
-      onSave={handleUpdateRow}
+      onSave={(value) => handleUpdateTag(value, initialValue)}
       onCancel={handleCancel}
-      mutationState={updateRowMutation}
+      mutationState={updateTagMutation}
       indent={indent}
       validate={validate}
       requireValueChangeToEnableSave

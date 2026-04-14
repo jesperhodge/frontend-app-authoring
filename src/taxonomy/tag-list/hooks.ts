@@ -1,17 +1,21 @@
 import { useReducer } from 'react';
 import { useIntl } from '@edx/frontend-platform/i18n';
 
-import globalMessages from '@src/messages';
 import { useCreateTag, useUpdateTag } from '@src/taxonomy/data/apiHooks';
-import type { RowId } from '@src/taxonomy/tree-table/types';
+import type { RowId, ToastState } from '@src/taxonomy/tree-table/types';
 import { TagTree } from './tagTree';
 import { TagListTableError } from './errors';
 import {
   TABLE_MODES,
   TRANSITION_TABLE,
   TABLE_MODE_ACTIONS,
-  TAG_NAME_PATTERN,
 } from './constants';
+import {
+  getInlineValidationMessage,
+  formatTagRequestError,
+  renameTagInTree,
+  addTagToTree,
+} from './editActionUtils';
 
 import messages from './messages';
 
@@ -41,24 +45,13 @@ interface UseEditActionsParams {
   setDraftError: React.Dispatch<React.SetStateAction<string>>;
   createTagMutation: ReturnType<typeof useCreateTag>;
   enterPreviewMode: () => void;
-  setToast: React.Dispatch<React.SetStateAction<{ show: boolean; message: string; }>>;
+  setToast: React.Dispatch<React.SetStateAction<ToastState>>;
   setIsCreatingTopTag: React.Dispatch<React.SetStateAction<boolean>>;
   setCreatingParentId: React.Dispatch<React.SetStateAction<RowId | null>>;
   exitDraftWithoutSave: () => void;
   setEditingRowId: React.Dispatch<React.SetStateAction<RowId | null>>;
   updateTagMutation: ReturnType<typeof useUpdateTag>;
 }
-
-const getInlineValidationMessage = (value: string, intl: ReturnType<typeof useIntl>): string => {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return intl.formatMessage(messages.nameRequired);
-  }
-  if (!TAG_NAME_PATTERN.test(trimmed)) {
-    return intl.formatMessage(messages.invalidCharacterInTagName);
-  }
-  return '';
-};
 
 /** Table mode reducer for React's `useReducer` hook.
  * This will throw an error if an invalid table mode transition is attempted,
@@ -120,30 +113,11 @@ const useEditActions = ({
   const intl = useIntl();
 
   const updateTableAfterRename = (oldValue: string, newValue: string) => {
-    setTagTree((currentTagTree) => {
-      const nextTree = currentTagTree || new TagTree([]);
-      nextTree.editTagValue(oldValue, newValue);
-      return nextTree;
-    });
+    setTagTree((currentTagTree) => renameTagInTree(currentTagTree, oldValue, newValue));
   };
 
   const updateTableWithoutDataReload = (value: string, parentTagValue: string | null = null) => {
-    setTagTree((currentTagTree) => {
-      const nextTree = currentTagTree || new TagTree([]);
-      const parentTag = parentTagValue ? nextTree.getTagAsDeepCopy(parentTagValue) : null;
-
-      nextTree.addNode({
-        id: Date.now(),
-        value,
-        parentValue: parentTagValue,
-        depth: parentTag ? parentTag.depth + 1 : 0,
-        childCount: 0,
-        subTagsUrl: null,
-        externalId: '',
-      }, parentTagValue);
-
-      return nextTree;
-    });
+    setTagTree((currentTagTree) => addTagToTree(currentTagTree, value, parentTagValue));
   };
 
   /** Validates a tag value and sets a draft error message if invalid.
@@ -164,26 +138,6 @@ const useEditActions = ({
     return true;
   };
 
-  const getErrorMessage = (error: any): string => {
-    let errorMessage: string = '';
-    if (error.name === 'AxiosError') {
-      const responseData = error.response?.data;
-      const tagError = Object.entries(responseData)?.find((errItem: [string, unknown]) => (
-        ['tag', 'value', 'updated_tag_value'].includes(errItem[0].toLowerCase())
-      ));
-
-      const errorMessages = tagError ? tagError[1] : (
-        (error as Error).message || intl.formatMessage(globalMessages.unknownError)
-      );
-      errorMessage = Array.isArray(errorMessages) ? errorMessages.join('; ') : String(errorMessages);
-    } else {
-      errorMessage = (error as Error).message || intl.formatMessage(globalMessages.unknownError);
-    }
-
-    errorMessage = errorMessage.replace(/\.$/, ''); // Remove trailing period for better message formatting
-    return errorMessage;
-  };
-
   const handleCreateTag = async (value: string, parentTagValue?: string) => {
     const trimmed = value.trim();
 
@@ -199,13 +153,18 @@ const useEditActions = ({
       setToast({
         show: true,
         message: intl.formatMessage(messages.tagCreationSuccessMessage, { name: trimmed }),
+        variant: 'success',
       });
       setIsCreatingTopTag(false);
       setCreatingParentId(null);
     } catch (error) {
-      const errorMessage = getErrorMessage(error);
+      const errorMessage = formatTagRequestError(error, intl);
       setDraftError(errorMessage);
-      setToast({ show: true, message: intl.formatMessage(messages.tagCreationErrorMessage, { errorMessage }) });
+      setToast({
+        show: true,
+        message: intl.formatMessage(messages.tagCreationErrorMessage, { errorMessage }),
+        variant: 'danger',
+      });
     }
   };
 
@@ -230,11 +189,16 @@ const useEditActions = ({
       setToast({
         show: true,
         message: intl.formatMessage(messages.tagUpdateSuccessMessage, { name: trimmed }),
+        variant: 'success',
       });
     } catch (error) {
-      const errorMessage = getErrorMessage(error);
+      const errorMessage = formatTagRequestError(error, intl);
       setDraftError(errorMessage);
-      setToast({ show: true, message: intl.formatMessage(messages.tagUpdateErrorMessage, { errorMessage }) });
+      setToast({
+        show: true,
+        message: intl.formatMessage(messages.tagUpdateErrorMessage, { errorMessage }),
+        variant: 'danger',
+      });
     }
   };
 

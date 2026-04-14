@@ -1,63 +1,28 @@
 import React from 'react';
 import { useIntl } from '@edx/frontend-platform/i18n';
-import { flexRender } from '@tanstack/react-table';
+import { useTagListContext } from '@src/taxonomy/tag-list/TagListContext';
 
 import { LoadingSpinner } from '@src/generic/Loading';
 import NestedRows from './NestedRows';
 
 import messages from './messages';
 
-import type {
-  CreateRowMutationState,
-  RowId,
-  TreeColumnDef,
-  TreeTable,
-} from './types';
 import CreateRow from './CreateRow';
 import EditRow from './EditRow';
+import DisplayRow from './DisplayRow';
+import { getTreeRowEditId } from './rowHelpers';
 
-interface TableBodyProps {
-  columns: TreeColumnDef[];
-  isCreatingTopRow: boolean;
-  draftError: string;
-  setIsCreatingTopRow: (isCreating: boolean) => void;
-  exitDraftWithoutSave: () => void;
-  handleCreateRow: (value: string, parentRowValue?: string) => void;
-  creatingParentId: RowId | null;
-  setCreatingParentId: (id: RowId | null) => void;
-  setDraftError: (error: string) => void;
-  createRowMutation: CreateRowMutationState;
-  updateRowMutation: CreateRowMutationState;
-  table: TreeTable;
-  isLoading: boolean;
-  validate: (value: string, mode?: 'soft' | 'hard') => boolean;
-  handleUpdateRow: (value: string, originalValue: string) => void;
-  editingRowId: RowId | null;
-  setEditingRowId: (id: RowId | null) => void;
-}
-
-const TableBody = ({
-  columns,
-  isCreatingTopRow,
-  draftError,
-  handleCreateRow,
-  setIsCreatingTopRow,
-  exitDraftWithoutSave,
-  creatingParentId,
-  setCreatingParentId,
-  setDraftError,
-  createRowMutation,
-  updateRowMutation,
-  table,
-  isLoading,
-  validate,
-  handleUpdateRow,
-  editingRowId,
-  setEditingRowId,
-}: TableBodyProps) => {
+const TableBody = () => {
   const intl = useIntl();
+  const {
+    isCreatingTopTag,
+    editingRowId,
+    columns,
+    table,
+    isLoading,
+  } = useTagListContext();
 
-  if (isLoading) {
+  if (!table || isLoading) {
     return (
       <tbody>
         <tr>
@@ -79,69 +44,25 @@ const TableBody = ({
         </tr>
       )}
 
-      {isCreatingTopRow && (
-        <CreateRow
-          draftError={draftError}
-          setDraftError={setDraftError}
-          handleCreateRow={handleCreateRow}
-          setIsCreatingTopRow={setIsCreatingTopRow}
-          exitDraftWithoutSave={exitDraftWithoutSave}
-          createRowMutation={createRowMutation}
-          validate={validate}
-        />
+      {isCreatingTopTag && (
+        <CreateRow />
       )}
 
       {table.getRowModel().rows.filter(row => row.depth === 0).map(row => (
         <React.Fragment key={row.id}>
-          {editingRowId === `${row.original.id}:${String(row.original.value)}` ? (
+          {editingRowId === getTreeRowEditId(row) ? (
             <EditRow
-              draftError={draftError}
-              setDraftError={setDraftError}
               initialValue={String(row.original.value)}
-              handleUpdateRow={(value) => handleUpdateRow(value, String(row.original.value))}
-              cancelEditRow={() => {
-                setEditingRowId(null);
-                exitDraftWithoutSave();
-              }}
-              updateRowMutation={updateRowMutation}
-              validate={validate}
               row={row}
             />
           ) : (
-            <tr>
-              {row.getVisibleCells()
-                .map((cell) => (
-                  <td key={cell.id} className="p-1">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-            </tr>
+            <DisplayRow row={row} />
           )}
           <NestedRows
             parentRow={row}
             childRowsData={row.subRows}
             parentRowValue={String(row.original.value)}
-            isCreating={creatingParentId === row.original.id}
-            onSaveNewChildRow={handleCreateRow}
-            onCancelCreation={() => {
-              setDraftError('');
-              setCreatingParentId(null);
-              exitDraftWithoutSave();
-            }}
-            creatingParentId={creatingParentId}
-            setCreatingParentId={setCreatingParentId}
             depth={1}
-            draftError={draftError}
-            createRowMutation={createRowMutation}
-            setDraftError={setDraftError}
-            setIsCreatingTopRow={setIsCreatingTopRow}
-            validate={validate}
-            updateRowMutation={updateRowMutation}
-            handleUpdateRow={handleUpdateRow}
-            editingRowId={editingRowId}
-            setEditingRowId={setEditingRowId}
-            exitDraftWithoutSave={exitDraftWithoutSave}
-            columns={columns}
           />
         </React.Fragment>
       ))}

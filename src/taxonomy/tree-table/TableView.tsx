@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Button,
   Toast,
@@ -13,76 +13,32 @@ import {
   getCoreRowModel,
   getExpandedRowModel,
   flexRender,
-  type OnChangeFn,
-  type PaginationState,
 } from '@tanstack/react-table';
 
 import { ArrowDropUpDown } from '@openedx/paragon/icons';
 import { useIntl } from '@edx/frontend-platform/i18n';
+import { useTagListContext } from '@src/taxonomy/tag-list/TagListContext';
 import TableBody from './TableBody';
 import './TableView.scss';
-import type {
-  CreateRowMutationState,
-  RowId,
-  ToastState,
-  TreeColumnDef,
-  TreeRowData,
-} from './types';
 import messages from './messages';
 import SaveErrorAlert from './SaveErrorAlert';
 
-interface TableViewProps {
-  treeData: TreeRowData[];
-  columns: TreeColumnDef[];
-  pageCount: number;
-  enablePagination?: boolean;
-  pagination: PaginationState;
-  handlePaginationChange: OnChangeFn<PaginationState>;
-  isLoading: boolean;
-  isCreatingTopRow: boolean;
-  draftError: string;
-  createRowMutation: CreateRowMutationState;
-  updateRowMutation: CreateRowMutationState;
-  toast: ToastState;
-  setToast: React.Dispatch<React.SetStateAction<ToastState>>;
-  setIsCreatingTopRow: (isCreating: boolean) => void;
-  exitDraftWithoutSave: () => void;
-  handleCreateRow: (value: string, parentRowValue?: string) => void;
-  creatingParentId: RowId | null;
-  setCreatingParentId: (id: RowId | null) => void;
-  setDraftError: (error: string) => void;
-  validate: (value: string, mode?: 'soft' | 'hard') => boolean;
-  handleUpdateRow: (value: string, originalValue: string) => void;
-  editingRowId: RowId | null;
-  setEditingRowId: (id: RowId | null) => void;
-}
-
-const TableView = ({
-  treeData,
-  columns,
-  pageCount,
-  enablePagination = false,
-  pagination,
-  handlePaginationChange,
-  isLoading,
-  isCreatingTopRow,
-  draftError,
-  createRowMutation,
-  updateRowMutation,
-  handleCreateRow,
-  toast,
-  setToast,
-  setIsCreatingTopRow,
-  exitDraftWithoutSave,
-  creatingParentId,
-  setCreatingParentId,
-  setDraftError,
-  validate,
-  handleUpdateRow,
-  editingRowId,
-  setEditingRowId,
-}: TableViewProps) => {
+const TableView = () => {
   const intl = useIntl();
+  const {
+    draftError,
+    createTagMutation,
+    updateTagMutation,
+    treeData,
+    pageCount,
+    pagination,
+    handlePaginationChange,
+    toast,
+    setToast,
+    columns,
+    enablePagination,
+    setTable,
+  } = useTagListContext();
 
   const table = useReactTable({
     data: treeData,
@@ -98,10 +54,16 @@ const TableView = ({
     getSubRows: (row) => row?.subRows || undefined,
   });
 
+  useEffect(() => {
+    if (table) {
+      setTable(table);
+    }
+  }, [table, setTable]);
+
   const currentPageIndex = table.getState().pagination.pageIndex + 1;
 
-  const { isError } = createRowMutation;
-  const { isError: isUpdateError } = updateRowMutation;
+  const { isError } = createTagMutation;
+  const { isError: isUpdateError } = updateTagMutation;
 
   return (
     <>
@@ -147,25 +109,7 @@ const TableView = ({
                 </tr>
               ))}
             </thead>
-            <TableBody
-              columns={columns}
-              isCreatingTopRow={isCreatingTopRow}
-              draftError={draftError}
-              handleCreateRow={handleCreateRow}
-              setIsCreatingTopRow={setIsCreatingTopRow}
-              exitDraftWithoutSave={exitDraftWithoutSave}
-              creatingParentId={creatingParentId}
-              setCreatingParentId={setCreatingParentId}
-              setDraftError={setDraftError}
-              createRowMutation={createRowMutation}
-              updateRowMutation={updateRowMutation}
-              table={table}
-              isLoading={isLoading}
-              validate={validate}
-              handleUpdateRow={handleUpdateRow}
-              editingRowId={editingRowId}
-              setEditingRowId={setEditingRowId}
-            />
+            <TableBody />
           </table>
         </Card.Section>
 
