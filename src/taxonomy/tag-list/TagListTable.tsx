@@ -6,12 +6,12 @@ import React, {
 import type { PaginationState } from '@tanstack/react-table';
 import { TableView } from '@src/taxonomy/tree-table';
 import { useTagListData, useCreateTag, useUpdateTag } from '@src/taxonomy/data/apiHooks';
-import { TagTree } from './tagTree';
 import type {
   RowId,
   TreeRowData,
-  ToastState,
-} from '../tree-table/types';
+  TreeTable,
+} from '@src/taxonomy/tree-table/types';
+import { TagTree } from './tagTree';
 import {
   TABLE_MODES,
 } from './constants';
@@ -26,41 +26,6 @@ interface TagListTableProps {
 
 // TODO: Fix and enable pagination on backend and frontend.For now, disable pagination by showing all tags on one page.
 const DISABLE_PAGINATION = true;
-
-interface TagListTableContentProps {
-  treeData: TreeRowData[];
-  pageCount: number;
-  pagination: PaginationState;
-  handlePaginationChange: React.Dispatch<React.SetStateAction<PaginationState>>;
-  isLoading: boolean;
-  toast: ToastState;
-  setToast: React.Dispatch<React.SetStateAction<ToastState>>;
-}
-
-const TagListTableContent = ({
-  treeData,
-  pageCount,
-  pagination,
-  handlePaginationChange,
-  isLoading,
-  toast,
-  setToast,
-}: TagListTableContentProps) => {
-  const columns = useTagColumns();
-
-  return (
-    <TableView
-      treeData={treeData}
-      columns={columns}
-      pageCount={pageCount}
-      pagination={pagination}
-      handlePaginationChange={handlePaginationChange}
-      isLoading={isLoading}
-      toast={toast}
-      setToast={setToast}
-    />
-  );
-};
 
 const TagListTable = ({ taxonomyId, maxDepth }: TagListTableProps) => {
   // The table has a VIEW, DRAFT, and a PREVIEW mode. It starts in VIEW mode.
@@ -84,6 +49,8 @@ const TagListTable = ({ taxonomyId, maxDepth }: TagListTableProps) => {
   const [tagTree, setTagTree] = useState<TagTree | null>(null);
   const [isCreatingTopTag, setIsCreatingTopTag] = useState(false);
   const [draftError, setDraftError] = useState('');
+  const [table, setTable] = useState<TreeTable | null>(null);
+
   const treeData = (tagTree?.getAllAsDeepCopy() || []) as unknown as TreeRowData[];
   const hasOpenDraft = isCreatingTopTag || creatingParentId !== null || editingRowId !== null;
 
@@ -131,48 +98,39 @@ const TagListTable = ({ taxonomyId, maxDepth }: TagListTableProps) => {
     setEditingRowId,
   });
 
-  const contextValue = useMemo(
-    () => ({
-      isCreatingTopTag,
-      setIsCreatingTopTag,
-      creatingParentId,
-      setCreatingParentId,
-      editingRowId,
-      setEditingRowId,
-      draftError,
-      setDraftError,
-      hasOpenDraft,
-      canAddTag: tagList?.canAddTag !== false,
-      maxDepth,
-      createTagMutation,
-      updateTagMutation,
-      handleCreateTag,
-      handleUpdateTag,
-      validate,
-      startDraftMode: enterDraftMode,
-      exitDraftWithoutSave,
-    }),
-    [
-      isCreatingTopTag,
-      setIsCreatingTopTag,
-      creatingParentId,
-      setCreatingParentId,
-      editingRowId,
-      setEditingRowId,
-      draftError,
-      setDraftError,
-      hasOpenDraft,
-      tagList?.canAddTag,
-      maxDepth,
-      createTagMutation,
-      updateTagMutation,
-      handleCreateTag,
-      handleUpdateTag,
-      validate,
-      enterDraftMode,
-      exitDraftWithoutSave,
-    ],
-  );
+  const columns = useTagColumns();
+
+  // eslint-disable-next-line react/jsx-no-constructed-context-values
+  const contextValue = {
+    isCreatingTopTag,
+    setIsCreatingTopTag,
+    creatingParentId,
+    setCreatingParentId,
+    editingRowId,
+    setEditingRowId,
+    draftError,
+    setDraftError,
+    hasOpenDraft,
+    canAddTag: tagList?.canAddTag !== false,
+    maxDepth,
+    createTagMutation,
+    updateTagMutation,
+    handleCreateTag,
+    handleUpdateTag,
+    validate,
+    startDraftMode: enterDraftMode,
+    exitDraftWithoutSave,
+    treeData,
+    pageCount,
+    pagination,
+    handlePaginationChange,
+    isLoading,
+    toast,
+    setToast,
+    columns,
+    table,
+    setTable,
+  };
 
   // RELOAD DATA IN VIEW MODE
   useEffect(() => {
@@ -188,15 +146,7 @@ const TagListTable = ({ taxonomyId, maxDepth }: TagListTableProps) => {
 
   return (
     <TagListContext.Provider value={contextValue}>
-      <TagListTableContent
-        treeData={treeData}
-        pageCount={pageCount}
-        pagination={pagination}
-        handlePaginationChange={handlePaginationChange}
-        isLoading={isLoading}
-        toast={toast}
-        setToast={setToast}
-      />
+      <TableView />
     </TagListContext.Provider>
   );
 };

@@ -1,6 +1,14 @@
 import React, { createContext, useContext } from 'react';
 
-import type { RowId, CreateRowMutationState } from '@src/taxonomy/tree-table/types';
+import type {
+  RowId,
+  CreateRowMutationState,
+  TreeRowData,
+  TreeColumnDef,
+  ToastState,
+  TreeTable,
+} from '@src/taxonomy/tree-table/types';
+import { OnChangeFn, PaginationState } from '@tanstack/react-table';
 
 interface TagListContextValue {
   isCreatingTopTag: boolean;
@@ -21,6 +29,17 @@ interface TagListContextValue {
   validate: (value: string, mode?: 'soft' | 'hard') => boolean;
   startDraftMode: () => void;
   exitDraftWithoutSave: () => void;
+  treeData: TreeRowData[];
+  columns: TreeColumnDef[];
+  pageCount: number;
+  enablePagination?: boolean;
+  pagination: PaginationState;
+  handlePaginationChange: OnChangeFn<PaginationState>;
+  isLoading: boolean;
+  toast: ToastState;
+  setToast: React.Dispatch<React.SetStateAction<ToastState>>;
+  table: TreeTable | null;
+  setTable: React.Dispatch<React.SetStateAction<TreeTable | null>>;
 }
 
 const TagListContext = createContext<TagListContextValue | null>(null);

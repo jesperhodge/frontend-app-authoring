@@ -7,33 +7,22 @@ import NestedRows from './NestedRows';
 
 import messages from './messages';
 
-import type {
-  TreeColumnDef,
-  TreeTable,
-} from './types';
 import CreateRow from './CreateRow';
 import EditRow from './EditRow';
 import DisplayRow from './DisplayRow';
 import { getTreeRowEditId } from './rowHelpers';
 
-interface TableBodyProps {
-  columns: TreeColumnDef[];
-  table: TreeTable;
-  isLoading: boolean;
-}
-
-const TableBody = ({
-  columns,
-  table,
-  isLoading,
-}: TableBodyProps) => {
+const TableBody = () => {
   const intl = useIntl();
   const {
     isCreatingTopTag,
     editingRowId,
+    columns,
+    table,
+    isLoading,
   } = useTagListContext();
 
-  if (isLoading) {
+  if (!table || isLoading) {
     return (
       <tbody>
         <tr>

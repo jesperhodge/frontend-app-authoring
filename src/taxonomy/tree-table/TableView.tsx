@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Button,
   Toast,
@@ -13,8 +13,6 @@ import {
   getCoreRowModel,
   getExpandedRowModel,
   flexRender,
-  type OnChangeFn,
-  type PaginationState,
 } from '@tanstack/react-table';
 
 import { ArrowDropUpDown } from '@openedx/paragon/icons';
@@ -22,39 +20,25 @@ import { useIntl } from '@edx/frontend-platform/i18n';
 import { useTagListContext } from '@src/taxonomy/tag-list/TagListContext';
 import TableBody from './TableBody';
 import './TableView.scss';
-import type {
-  ToastState,
-  TreeColumnDef,
-  TreeRowData,
-} from './types';
 import messages from './messages';
 import SaveErrorAlert from './SaveErrorAlert';
 
-interface TableViewProps {
-  treeData: TreeRowData[];
-  columns: TreeColumnDef[];
-  pageCount: number;
-  enablePagination?: boolean;
-  pagination: PaginationState;
-  handlePaginationChange: OnChangeFn<PaginationState>;
-  isLoading: boolean;
-  toast: ToastState;
-  setToast: React.Dispatch<React.SetStateAction<ToastState>>;
-}
-
-const TableView = ({
-  treeData,
-  columns,
-  pageCount,
-  enablePagination = false,
-  pagination,
-  handlePaginationChange,
-  isLoading,
-  toast,
-  setToast,
-}: TableViewProps) => {
+const TableView = () => {
   const intl = useIntl();
-  const { draftError, createTagMutation, updateTagMutation } = useTagListContext();
+  const {
+    draftError,
+    createTagMutation,
+    updateTagMutation,
+    treeData,
+    pageCount,
+    pagination,
+    handlePaginationChange,
+    toast,
+    setToast,
+    columns,
+    enablePagination,
+    setTable,
+  } = useTagListContext();
 
   const table = useReactTable({
     data: treeData,
@@ -69,6 +53,12 @@ const TableView = ({
     onPaginationChange: handlePaginationChange,
     getSubRows: (row) => row?.subRows || undefined,
   });
+
+  useEffect(() => {
+    if (table) {
+      setTable(table);
+    }
+  }, [table, setTable]);
 
   const currentPageIndex = table.getState().pagination.pageIndex + 1;
 
@@ -119,11 +109,7 @@ const TableView = ({
                 </tr>
               ))}
             </thead>
-            <TableBody
-              columns={columns}
-              table={table}
-              isLoading={isLoading}
-            />
+            <TableBody />
           </table>
         </Card.Section>
 
