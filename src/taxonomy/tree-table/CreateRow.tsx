@@ -1,40 +1,42 @@
 import React from 'react';
-import type { CreateRowMutationState } from './types';
+import { useTagListContext } from '@src/taxonomy/tag-list/TagListContext';
 import DraftRow from './DraftRow';
 
 interface CreateRowProps {
-  draftError: string;
-  setDraftError: (error: string) => void;
-  handleCreateRow: (value: string) => void;
-  setIsCreatingTopRow: (isCreating: boolean) => void;
-  exitDraftWithoutSave: () => void;
-  createRowMutation: CreateRowMutationState;
+  parentRowValue?: string;
   indent?: number;
-  validate: (value: string, mode?: 'soft' | 'hard') => boolean;
 }
 
 const CreateRow: React.FC<CreateRowProps> = ({
-  draftError,
-  setDraftError,
-  handleCreateRow,
-  setIsCreatingTopRow,
-  exitDraftWithoutSave,
-  createRowMutation,
+  parentRowValue,
   indent = 0,
-  validate,
 }) => {
+  const {
+    draftError,
+    setDraftError,
+    handleCreateTag,
+    setIsCreatingTopTag,
+    setCreatingParentId,
+    exitDraftWithoutSave,
+    createTagMutation,
+    validate,
+  } = useTagListContext();
+
   const handleCancel = () => {
     setDraftError('');
-    setIsCreatingTopRow(false);
+    setIsCreatingTopTag(false);
+    if (parentRowValue) {
+      setCreatingParentId(null);
+    }
     exitDraftWithoutSave();
   };
 
   return (
     <DraftRow
       draftError={draftError}
-      onSave={handleCreateRow}
+      onSave={(value) => handleCreateTag(value, parentRowValue)}
       onCancel={handleCancel}
-      mutationState={createRowMutation}
+      mutationState={createTagMutation}
       indent={indent}
       validate={validate}
       rowId="creating-top-row"

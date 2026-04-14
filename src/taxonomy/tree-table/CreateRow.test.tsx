@@ -1,6 +1,7 @@
 import React from 'react';
 import { IntlProvider } from '@edx/frontend-platform/i18n';
 import { fireEvent, render, screen } from '@testing-library/react';
+import { TagListContext } from '@src/taxonomy/tag-list/TagListContext';
 
 import CreateRow from './CreateRow';
 
@@ -8,25 +9,38 @@ const wrapper = ({ children }: { children: React.ReactNode }) => (
   <IntlProvider locale="en" messages={{}}>{children}</IntlProvider>
 );
 
-const baseProps = () => ({
+const baseContext = () => ({
+  isCreatingTopTag: false,
+  setIsCreatingTopTag: jest.fn(),
+  creatingParentId: null,
+  setCreatingParentId: jest.fn(),
+  editingRowId: null,
+  setEditingRowId: jest.fn(),
   draftError: '',
   setDraftError: jest.fn(),
-  handleCreateRow: jest.fn(),
-  setIsCreatingTopRow: jest.fn(),
-  exitDraftWithoutSave: jest.fn(),
-  createRowMutation: { isPending: false },
+  hasOpenDraft: false,
+  canAddTag: true,
+  maxDepth: 3,
+  createTagMutation: { isPending: false, isError: false },
+  updateTagMutation: { isPending: false, isError: false },
+  handleCreateTag: jest.fn(),
+  handleUpdateTag: jest.fn(),
   validate: jest.fn((value: string) => value.trim().length > 0),
+  startDraftMode: jest.fn(),
+  exitDraftWithoutSave: jest.fn(),
 });
 
 describe('CreateRow', () => {
   it('saves on Enter when value is valid', () => {
-    const props = baseProps();
+    const context = baseContext();
     render(
-      <table>
-        <tbody>
-          <CreateRow {...(props as any)} />
-        </tbody>
-      </table>,
+      <TagListContext.Provider value={context as any}>
+        <table>
+          <tbody>
+            <CreateRow />
+          </tbody>
+        </table>
+      </TagListContext.Provider>,
       { wrapper },
     );
 
@@ -34,19 +48,21 @@ describe('CreateRow', () => {
     fireEvent.change(input, { target: { value: '  new tag  ' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
-    expect(props.handleCreateRow).toHaveBeenCalledWith('new tag');
+    expect(context.handleCreateTag).toHaveBeenCalledWith('new tag', undefined);
   });
 
   it('does not save on Enter when mutation is pending', () => {
-    const props = baseProps();
-    props.createRowMutation = { isPending: true };
+    const context = baseContext();
+    context.createTagMutation = { isPending: true, isError: false };
 
     render(
-      <table>
-        <tbody>
-          <CreateRow {...(props as any)} />
-        </tbody>
-      </table>,
+      <TagListContext.Provider value={context as any}>
+        <table>
+          <tbody>
+            <CreateRow />
+          </tbody>
+        </table>
+      </TagListContext.Provider>,
       { wrapper },
     );
 
@@ -54,18 +70,20 @@ describe('CreateRow', () => {
     fireEvent.change(input, { target: { value: 'pending tag' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
-    expect(props.handleCreateRow).not.toHaveBeenCalled();
+    expect(context.handleCreateTag).not.toHaveBeenCalled();
   });
 
   it('cancels on Escape and resets draft state', () => {
-    const props = baseProps();
+    const context = baseContext();
 
     render(
-      <table>
-        <tbody>
-          <CreateRow {...(props as any)} />
-        </tbody>
-      </table>,
+      <TagListContext.Provider value={context as any}>
+        <table>
+          <tbody>
+            <CreateRow />
+          </tbody>
+        </table>
+      </TagListContext.Provider>,
       { wrapper },
     );
 
@@ -73,8 +91,8 @@ describe('CreateRow', () => {
     fireEvent.change(input, { target: { value: 'will cancel' } });
     fireEvent.keyDown(input, { key: 'Escape' });
 
-    expect(props.setDraftError).toHaveBeenCalledWith('');
-    expect(props.setIsCreatingTopRow).toHaveBeenCalledWith(false);
-    expect(props.exitDraftWithoutSave).toHaveBeenCalled();
+    expect(context.setDraftError).toHaveBeenCalledWith('');
+    expect(context.setIsCreatingTopTag).toHaveBeenCalledWith(false);
+    expect(context.exitDraftWithoutSave).toHaveBeenCalled();
   });
 });

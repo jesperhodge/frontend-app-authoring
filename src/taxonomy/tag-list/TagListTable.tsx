@@ -9,13 +9,14 @@ import { useTagListData, useCreateTag, useUpdateTag } from '@src/taxonomy/data/a
 import { TagTree } from './tagTree';
 import type {
   RowId,
-  TreeColumnDef,
   TreeRowData,
+  ToastState,
 } from '../tree-table/types';
 import {
   TABLE_MODES,
 } from './constants';
-import { getColumns } from './tagColumns';
+import { useTagColumns } from './tagColumns';
+import { TagListContext } from './TagListContext';
 import { useTableModes, useEditActions } from './hooks';
 
 interface TagListTableProps {
@@ -25,6 +26,41 @@ interface TagListTableProps {
 
 // TODO: Fix and enable pagination on backend and frontend.For now, disable pagination by showing all tags on one page.
 const DISABLE_PAGINATION = true;
+
+interface TagListTableContentProps {
+  treeData: TreeRowData[];
+  pageCount: number;
+  pagination: PaginationState;
+  handlePaginationChange: React.Dispatch<React.SetStateAction<PaginationState>>;
+  isLoading: boolean;
+  toast: ToastState;
+  setToast: React.Dispatch<React.SetStateAction<ToastState>>;
+}
+
+const TagListTableContent = ({
+  treeData,
+  pageCount,
+  pagination,
+  handlePaginationChange,
+  isLoading,
+  toast,
+  setToast,
+}: TagListTableContentProps) => {
+  const columns = useTagColumns();
+
+  return (
+    <TableView
+      treeData={treeData}
+      columns={columns}
+      pageCount={pageCount}
+      pagination={pagination}
+      handlePaginationChange={handlePaginationChange}
+      isLoading={isLoading}
+      toast={toast}
+      setToast={setToast}
+    />
+  );
+};
 
 const TagListTable = ({ taxonomyId, maxDepth }: TagListTableProps) => {
   // The table has a VIEW, DRAFT, and a PREVIEW mode. It starts in VIEW mode.
@@ -47,7 +83,6 @@ const TagListTable = ({ taxonomyId, maxDepth }: TagListTableProps) => {
   const [toast, setToast] = useState({ show: false, message: '', variant: 'success' });
   const [tagTree, setTagTree] = useState<TagTree | null>(null);
   const [isCreatingTopTag, setIsCreatingTopTag] = useState(false);
-  const [activeActionMenuRowId, setActiveActionMenuRowId] = useState<RowId | null>(null);
   const [draftError, setDraftError] = useState('');
   const treeData = (tagTree?.getAllAsDeepCopy() || []) as unknown as TreeRowData[];
   const hasOpenDraft = isCreatingTopTag || creatingParentId !== null || editingRowId !== null;
@@ -81,8 +116,6 @@ const TagListTable = ({ taxonomyId, maxDepth }: TagListTableProps) => {
   const updateTagMutation = useUpdateTag(taxonomyId);
   const pageCount = tagList?.numPages ?? -1;
 
-  // TODO: to make this more readable, introduce a React context for the TagListTable instead of passing props.
-
   // Custom Edit Actions Hook - handles table mode transitions, API calls,
   // and updating the table without a full data reload when creating or editing tags.
   const { handleCreateTag, handleUpdateTag, validate } = useEditActions({
@@ -98,38 +131,46 @@ const TagListTable = ({ taxonomyId, maxDepth }: TagListTableProps) => {
     setEditingRowId,
   });
 
-  const columns = useMemo<TreeColumnDef[]>(
-    () => getColumns({
+  const contextValue = useMemo(
+    () => ({
+      isCreatingTopTag,
       setIsCreatingTopTag,
+      creatingParentId,
       setCreatingParentId,
-      handleUpdateTag,
+      editingRowId,
       setEditingRowId,
-      onStartDraft: enterDraftMode,
-      setActiveActionMenuRowId,
-      hasOpenDraft,
-      canAddTag: tagList?.canAddTag !== false,
       draftError,
       setDraftError,
-      isSavingDraft: createTagMutation.isPending,
+      hasOpenDraft,
+      canAddTag: tagList?.canAddTag !== false,
       maxDepth,
+      createTagMutation,
+      updateTagMutation,
+      handleCreateTag,
+      handleUpdateTag,
+      validate,
+      startDraftMode: enterDraftMode,
+      exitDraftWithoutSave,
     }),
     [
       isCreatingTopTag,
-      tableMode,
-      activeActionMenuRowId,
-      hasOpenDraft,
-      creatingParentId,
-      tagList?.canAddTag,
-      draftError,
-      createTagMutation.isPending,
-      maxDepth,
       setIsCreatingTopTag,
+      creatingParentId,
       setCreatingParentId,
-      handleUpdateTag,
+      editingRowId,
       setEditingRowId,
-      enterDraftMode,
-      setActiveActionMenuRowId,
+      draftError,
       setDraftError,
+      hasOpenDraft,
+      tagList?.canAddTag,
+      maxDepth,
+      createTagMutation,
+      updateTagMutation,
+      handleCreateTag,
+      handleUpdateTag,
+      validate,
+      enterDraftMode,
+      exitDraftWithoutSave,
     ],
   );
 
@@ -146,32 +187,17 @@ const TagListTable = ({ taxonomyId, maxDepth }: TagListTableProps) => {
   }, [tagList?.results, tableMode]);
 
   return (
-    <TableView
-      {...{
-        treeData,
-        columns,
-        pageCount,
-        pagination,
-        handlePaginationChange,
-        isLoading,
-        isCreatingTopRow: isCreatingTopTag,
-        draftError,
-        createRowMutation: createTagMutation,
-        updateRowMutation: updateTagMutation,
-        handleCreateRow: handleCreateTag,
-        handleUpdateRow: handleUpdateTag,
-        toast,
-        setToast,
-        setIsCreatingTopRow: setIsCreatingTopTag,
-        exitDraftWithoutSave,
-        creatingParentId,
-        setCreatingParentId,
-        setDraftError,
-        validate,
-        editingRowId,
-        setEditingRowId,
-      }}
-    />
+    <TagListContext.Provider value={contextValue}>
+      <TagListTableContent
+        treeData={treeData}
+        pageCount={pageCount}
+        pagination={pagination}
+        handlePaginationChange={handlePaginationChange}
+        isLoading={isLoading}
+        toast={toast}
+        setToast={setToast}
+      />
+    </TagListContext.Provider>
   );
 };
 

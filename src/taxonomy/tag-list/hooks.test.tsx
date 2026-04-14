@@ -148,6 +148,7 @@ describe('useEditActions', () => {
     expect(setToast).toHaveBeenCalledWith({
       show: true,
       message: 'Tag "updated" updated successfully',
+      variant: 'success',
     });
     expect(setEditingRowId).toHaveBeenCalledWith(null);
   });
@@ -169,6 +170,7 @@ describe('useEditActions', () => {
     expect(setToast).toHaveBeenCalledWith({
       show: true,
       message: 'Error creating tag: server failed',
+      variant: 'danger',
     });
   });
 });
