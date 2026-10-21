@@ -1,3 +1,5 @@
+// [review] Comment on this file in the original PR: https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-0288120175bd3c25628db54e8c46e1ca98c18412b5dbb23a61c479dc5c419dc0
+// [review] L1 splits the response type into the groups-plus-criteria tree and a response that adds the two counts the backend returns, one for the listed courses and one for the whole instance.
 /**
  * Types for the competency-criteria-associations data model, per
  * `docs/openedx_learning/decisions/0002-competency-criteria-model.rst`
@@ -17,7 +19,7 @@
 export type CompetencyGroupLogicOperator = 'AND' | 'OR';
 
 /** One criteria-group row, as returned flat in
- * `CompetencyCriteriaGroupsResponse.groups`. The API models a three-level
+ * `CompetencyCriteriaTree.groups`. The API models a three-level
  * tree per competency (tag) with no `depth` field of its own, so a group's
  * level is inferred structurally from `parentId`/`courseKey`:
  * - root: `parentId: null`, `courseKey: null` - one per competency,
@@ -82,15 +84,27 @@ export interface CompetencyCriterion {
   rulePayloadOverride: GradeRulePayload | null;
 }
 
-/** `#681`'s documented response shape: a flat `groups` array (root,
- * course-level, and leaf rows mixed - see `CompetencyCriteriaGroup`) plus a
- * flat `criteria` array, each criterion pointing at its leaf group by id.
- * See `buildCompetencyCriteriaGroupsIndex` in `../utils` for the tree this
- * gets indexed into.
+// [review] L1: Separates the tree from the two counts, so the summary can read how many associations are in view and how many exist in total. AC "The summary states how many associations are in view and how many exist in total".
+// [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-0288120175bd3c25628db54e8c46e1ca98c18412b5dbb23a61c479dc5c419dc0R96
+/** The flat groups-plus-criteria tree `#681`'s endpoint returns: a flat
+ * `groups` array (root, course-level, and leaf rows mixed - see
+ * `CompetencyCriteriaGroup`) plus a flat `criteria` array, each criterion
+ * pointing at its leaf group by id. See `buildCompetencyCriteriaGroupsIndex`
+ * in `../utils` for the tree this gets indexed into.
  */
-export interface CompetencyCriteriaGroupsResponse {
+export interface CompetencyCriteriaTree {
   groups: CompetencyCriteriaGroup[];
   criteria: CompetencyCriterion[];
+}
+
+/** `#681`'s response: the `CompetencyCriteriaTree`, scoped to the requested
+ * `course_keys`, plus the two counts `#682` adds.
+ */
+export interface CompetencyCriteriaGroupsResponse extends CompetencyCriteriaTree {
+  /** The number of criteria in this response, i.e. after scoping to `course_keys` (`#682`). */
+  criteriaCount: number;
+  /** The competency's non-archived criteria across the whole instance, ignoring `course_keys` (`#682`). */
+  totalCriteriaCount: number;
 }
 
 /** One competency rule profile (`#773`) - the studio-wide default is the

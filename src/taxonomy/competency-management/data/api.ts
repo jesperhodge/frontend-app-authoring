@@ -1,3 +1,5 @@
+// [review] Comment on this file in the original PR: https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-3fd798b3c17a265739d508c0448a46c303e8f818054aed67456a38895154e2ca
+// [review] L1 makes the criteria-groups request carry the listed course keys.
 import { camelCaseObject, getConfig } from '@edx/frontend-platform';
 import { getAuthenticatedHttpClient } from '@edx/frontend-platform/auth';
 import type {
@@ -54,12 +56,20 @@ export const apiUrls = {
   updateCompetencyCriteriaRule: (groupId: number) => makeCbeV1Url(`criteria-groups/${groupId}/criteria/bulk-update/`),
 } satisfies Record<string, (...args: any[]) => string>;
 
+// [review] L1: Always sends `course_keys`, also as an empty value, because omitting it means unscoped to the backend. AC "The associations panel opens scoped to the courses first listed" and AC "A search that matches no course".
+// [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-3fd798b3c17a265739d508c0448a46c303e8f818054aed67456a38895154e2caR62
 /**
  * Get one competency's existing criteria groups and criteria.
  * @param tagId The id of the competency (tag) to load associations for.
+ * @param courseKeys The listed courses' keys, always sent (empty means instance-wide only).
  */
-export async function getCompetencyCriteriaGroups(tagId: number): Promise<CompetencyCriteriaGroupsResponse> {
-  const { data } = await getAuthenticatedHttpClient().get(apiUrls.competencyCriteriaGroups(tagId));
+export async function getCompetencyCriteriaGroups(
+  tagId: number,
+  courseKeys: string[],
+): Promise<CompetencyCriteriaGroupsResponse> {
+  const { data } = await getAuthenticatedHttpClient().get(apiUrls.competencyCriteriaGroups(tagId), {
+    params: { course_keys: courseKeys.join(',') },
+  });
   return camelCaseObject(data);
 }
 
