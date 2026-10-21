@@ -13,7 +13,7 @@ import {
 } from '@src/testUtils';
 import { CompetencyAssociationsProvider, useCompetencyAssociations } from './CompetencyAssociationsContext';
 import { apiUrls } from './data/api';
-import type { CompetencyCriteriaGroupsResponse } from './data/types';
+import type { CompetencyCriteriaTree } from './data/types';
 
 let axiosMock: ReturnType<typeof initializeMocks>['axiosMock'];
 let mockShowToast: ReturnType<typeof initializeMocks>['mockShowToast'];
@@ -28,6 +28,15 @@ const profileUrl = apiUrls.defaultCompetencyRuleProfile();
 const createUrl = apiUrls.createCompetencyCriterion(tagId);
 const updateGroupOperatorUrl = apiUrls.updateCompetencyCriteriaGroup(tagId, 10);
 const updateRuleScoreUrl = apiUrls.updateCompetencyCriteriaRule(10);
+
+// [review] L5: The fixtures from here on use the tree type and gain the two count fields, with no behavior change.
+/** The criteria-groups wire body. Its groups and criteria are written camelCase here, which `camelCaseObject`
+ * leaves unchanged; the counts are the snake_case fields it converts.
+ */
+type CriteriaGroupsHttpResponse = CompetencyCriteriaTree & {
+  criteria_count: number;
+  total_criteria_count: number;
+};
 
 /** `#773`'s real response envelope: a paginated list, not a single object -
  * see `CompetencyRuleProfileListResponse` in `./data/types`.
@@ -52,7 +61,7 @@ const profileResponse = {
  * with one criterion (`existing-sub`, no override - resolves through the
  * default profile above).
  */
-const singleGroupResponse: CompetencyCriteriaGroupsResponse = {
+const singleGroupResponse: CriteriaGroupsHttpResponse = {
   groups: [
     {
       id: 500,
@@ -86,12 +95,14 @@ const singleGroupResponse: CompetencyCriteriaGroupsResponse = {
       rulePayloadOverride: null,
     },
   ],
+  criteria_count: 1,
+  total_criteria_count: 1,
 };
 
 /** Same course-level group, but two leaf groups (10 and 11) - so "exactly
  * one bottom-tier group" is false.
  */
-const twoGroupsResponse: CompetencyCriteriaGroupsResponse = {
+const twoGroupsResponse: CriteriaGroupsHttpResponse = {
   groups: [
     {
       id: 500,
@@ -117,10 +128,12 @@ const twoGroupsResponse: CompetencyCriteriaGroupsResponse = {
     { id: 11, parentId: 1, tagId, courseKey: null, name: 'leaf', ordering: 1, logicOperator: 'AND', archived: false },
   ],
   criteria: [],
+  criteria_count: 0,
+  total_criteria_count: 0,
 };
 
 /** Like `singleGroupResponse`, but its only box is gte 75%, so the 70% default is free. */
-const uniqueDefaultResponse: CompetencyCriteriaGroupsResponse = {
+const uniqueDefaultResponse: CriteriaGroupsHttpResponse = {
   ...singleGroupResponse,
   criteria: [
     {
@@ -132,16 +145,23 @@ const uniqueDefaultResponse: CompetencyCriteriaGroupsResponse = {
       rulePayloadOverride: { op: 'gte', value: 0.75, scale: 'percent' },
     },
   ],
+  criteria_count: 1,
+  total_criteria_count: 1,
 };
 
-const noGroupsResponse: CompetencyCriteriaGroupsResponse = { groups: [], criteria: [] };
+const noGroupsResponse: CriteriaGroupsHttpResponse = {
+  groups: [],
+  criteria: [],
+  criteria_count: 0,
+  total_criteria_count: 0,
+};
 
 /** Two course-level groups under the same root: courseA (id 1, leaf group
  * 10) and courseB (id 2, leaf group 20) - used to prove a course whose own
  * outline fetch fails is excluded from `accessibleCourseGroups` while a
  * sibling course whose outline succeeds is not.
  */
-const twoCoursesResponse: CompetencyCriteriaGroupsResponse = {
+const twoCoursesResponse: CriteriaGroupsHttpResponse = {
   groups: [
     {
       id: 500,
@@ -177,10 +197,12 @@ const twoCoursesResponse: CompetencyCriteriaGroupsResponse = {
     { id: 20, parentId: 2, tagId, courseKey: null, name: 'leaf', ordering: 0, logicOperator: 'AND', archived: false },
   ],
   criteria: [],
+  criteria_count: 0,
+  total_criteria_count: 0,
 };
 
 /** Like `twoCoursesResponse`, but group 20 has a criterion, so focusing it yields a real rule key. */
-const courseExpansionResponse: CompetencyCriteriaGroupsResponse = {
+const courseExpansionResponse: CriteriaGroupsHttpResponse = {
   ...twoCoursesResponse,
   criteria: [
     {
@@ -192,32 +214,40 @@ const courseExpansionResponse: CompetencyCriteriaGroupsResponse = {
       rulePayloadOverride: null,
     },
   ],
+  criteria_count: 1,
+  total_criteria_count: 1,
 };
 
 const defaultRuleKey = 'grade:gte:0.7:percent';
 
 /** `twoGroupsResponse`'s two leaf groups, each holding one default-rule criterion. */
-const twoGroupsWithCriteriaResponse: CompetencyCriteriaGroupsResponse = {
+const twoGroupsWithCriteriaResponse: CriteriaGroupsHttpResponse = {
   ...twoGroupsResponse,
   criteria: [
     { id: 901, objectId: 'sub-a', groupId: 10, ruleProfileId: 1, ruleTypeOverride: null, rulePayloadOverride: null },
     { id: 902, objectId: 'sub-b', groupId: 11, ruleProfileId: 1, ruleTypeOverride: null, rulePayloadOverride: null },
   ],
+  criteria_count: 2,
+  total_criteria_count: 2,
 };
 
 /** `twoGroupsWithCriteriaResponse` after group 10 was deleted. */
-const afterDeletingGroup10Response: CompetencyCriteriaGroupsResponse = {
+const afterDeletingGroup10Response: CriteriaGroupsHttpResponse = {
   groups: twoGroupsWithCriteriaResponse.groups.filter((group) => group.id !== 10),
   criteria: twoGroupsWithCriteriaResponse.criteria.filter((criterion) => criterion.groupId !== 10),
+  criteria_count: 1,
+  total_criteria_count: 1,
 };
 
 /** Course A (group 10) and course B (group 20), each leaf holding one default-rule criterion. */
-const twoCoursesWithCriteriaResponse: CompetencyCriteriaGroupsResponse = {
+const twoCoursesWithCriteriaResponse: CriteriaGroupsHttpResponse = {
   ...twoCoursesResponse,
   criteria: [
     { id: 901, objectId: 'sub-a', groupId: 10, ruleProfileId: 1, ruleTypeOverride: null, rulePayloadOverride: null },
     { id: 902, objectId: 'sub-b', groupId: 20, ruleProfileId: 1, ruleTypeOverride: null, rulePayloadOverride: null },
   ],
+  criteria_count: 2,
+  total_criteria_count: 2,
 };
 
 const outlineFixture = buildOutlineIndex();
@@ -1071,8 +1101,8 @@ describe('CompetencyAssociationsProvider', () => {
 
     /** Serves `initial` once, then `refetched` (held until `release` is called) for every later GET. */
     const mockGroupsReads = (
-      initial: CompetencyCriteriaGroupsResponse,
-      refetched: CompetencyCriteriaGroupsResponse,
+      initial: CriteriaGroupsHttpResponse,
+      refetched: CriteriaGroupsHttpResponse,
     ) => {
       const control = { release: () => {} };
       axiosMock.onGet(groupsUrl).replyOnce(200, initial);
@@ -1202,6 +1232,8 @@ describe('CompetencyAssociationsProvider', () => {
       const reads = mockGroupsReads(twoCoursesWithCriteriaResponse, {
         groups: twoCoursesWithCriteriaResponse.groups.filter((group) => group.id !== 2 && group.id !== 20),
         criteria: twoCoursesWithCriteriaResponse.criteria.filter((criterion) => criterion.groupId === 10),
+        criteria_count: 1,
+        total_criteria_count: 1,
       });
       axiosMock.onGet(getCourseOutlineIndexApiUrl(courseB)).reply(200, outlineFixture);
       renderProvider();
@@ -1266,6 +1298,8 @@ describe('CompetencyAssociationsProvider', () => {
       const reads = mockGroupsReads(twoCoursesWithCriteriaResponse, {
         groups: twoCoursesWithCriteriaResponse.groups.filter((group) => group.id !== 1 && group.id !== 10),
         criteria: twoCoursesWithCriteriaResponse.criteria.filter((criterion) => criterion.groupId === 20),
+        criteria_count: 1,
+        total_criteria_count: 1,
       });
       await renderWithFocusOnGroup10();
 
@@ -1305,6 +1339,8 @@ describe('CompetencyAssociationsProvider', () => {
       axiosMock.onGet(groupsUrl).reply(200, {
         groups: singleGroupResponse.groups.filter((group) => group.id !== 10),
         criteria: [],
+        criteria_count: 0,
+        total_criteria_count: 0,
       });
       axiosMock.onGet(profileUrl).reply(200, profileResponse);
       axiosMock.onGet(getCourseOutlineIndexApiUrl(courseA)).reply(200, outlineFixture);

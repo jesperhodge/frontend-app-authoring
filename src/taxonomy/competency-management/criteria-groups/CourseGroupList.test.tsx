@@ -15,7 +15,13 @@ const systemDefaultProfile: CompetencyRuleProfile = {
   archived: false,
 };
 
-const emptyGroupsResponse: CompetencyCriteriaGroupsResponse = { groups: [], criteria: [] };
+// [review] L5: Fixtures gain the two count fields, with no behavior change.
+const emptyGroupsResponse: CompetencyCriteriaGroupsResponse = {
+  groups: [],
+  criteria: [],
+  criteriaCount: 0,
+  totalCriteriaCount: 0,
+};
 
 const populatedGroupsResponse: CompetencyCriteriaGroupsResponse = {
   groups: [
@@ -41,6 +47,8 @@ const populatedGroupsResponse: CompetencyCriteriaGroupsResponse = {
     },
   ],
   criteria: [],
+  criteriaCount: 0,
+  totalCriteriaCount: 0,
 };
 
 const buildQueryResult = <T,>(overrides: Partial<UseQueryResult<T>>): UseQueryResult<T> => ({

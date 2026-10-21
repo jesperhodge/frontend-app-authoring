@@ -1,7 +1,9 @@
+// [review] Comment on this file in the original PR: https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-0c58805cdd8a7321b6d08057d01a873cdcc403cd60e4fc04dbc473e0039768a9
+// [review] L5 is a type rename with no behavior change: the helpers take the groups-plus-criteria tree type that L1 split out of the response type.
 import type {
   BottomTierCompetencyCriteriaGroup,
   CompetencyCriteriaGroup,
-  CompetencyCriteriaGroupsResponse,
+  CompetencyCriteriaTree,
   CompetencyCriterion,
   CompetencyRuleProfile,
   CourseCompetencyCriteriaGroup,
@@ -37,7 +39,7 @@ export interface CompetencyCriteriaGroupsIndex {
  * file operates on.
  */
 export function buildCompetencyCriteriaGroupsIndex(
-  response: CompetencyCriteriaGroupsResponse,
+  response: CompetencyCriteriaTree,
 ): CompetencyCriteriaGroupsIndex {
   const groupsById = new Map<number, CompetencyCriteriaGroup>();
   const childGroupsByParentId = new Map<number, CompetencyCriteriaGroup[]>();
@@ -244,7 +246,7 @@ export function visibleCourseGroups(
  * create mutation's duplicate guard uses this to tell whether a clicked
  * subsection already has a criterion associated with it.
  */
-export function associatedObjectIds(response: CompetencyCriteriaGroupsResponse): Set<string> {
+export function associatedObjectIds(response: CompetencyCriteriaTree): Set<string> {
   return new Set(response.criteria.map((criterion) => criterion.objectId));
 }
 

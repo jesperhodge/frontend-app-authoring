@@ -1,3 +1,5 @@
+// [review] Comment on this file in the original PR: https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-34c14e6650d7f9c5252db1b2d565c5e4cbe644feefd9a2624576b5e3c77b41cc
+// [review] L5 is a type rename in the fixtures with no behavior change.
 import {
   initializeMocks,
   render,
@@ -7,7 +9,7 @@ import {
 import { buildMockCompetencyAssociationsContextValue, MockCompetencyAssociationsProvider } from '../testHelpers';
 import type {
   BottomTierCompetencyCriteriaGroup,
-  CompetencyCriteriaGroupsResponse,
+  CompetencyCriteriaTree,
   CompetencyRuleProfile,
   CourseCompetencyCriteriaGroup,
 } from '../data/types';
@@ -44,7 +46,7 @@ const group: BottomTierCompetencyCriteriaGroup = {
   archived: false,
 };
 
-const response: CompetencyCriteriaGroupsResponse = {
+const response: CompetencyCriteriaTree = {
   groups: [courseGroup, group],
   criteria: [
     {

@@ -1,5 +1,7 @@
+// [review] Comment on this file in the original PR: https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-715972809016ca67e2a7d3b8f7a44a2a896807f59802a219f2436702e1c34ca6
+// [review] L5 is a type rename in the fixtures with no behavior change.
 import type {
-  CompetencyCriteriaGroupsResponse,
+  CompetencyCriteriaTree,
   CompetencyCriterion,
   CompetencyRuleProfile,
   GradeRulePayload,
@@ -49,7 +51,7 @@ const buildCriterion = (overrides: Partial<CompetencyCriterion> = {}): Competenc
 // 103). Group ids and array order are deliberately out of numeric/array
 // order so tests can't pass by accident from iterating in id or array
 // order instead of by the fields the derivation actually sorts on.
-const fixtureResponse: CompetencyCriteriaGroupsResponse = {
+const fixtureResponse: CompetencyCriteriaTree = {
   groups: [
     {
       id: 100,
@@ -245,7 +247,7 @@ describe('lastBottomTierGroupForCourse', () => {
   });
 
   it('breaks a tie in ordering by the higher id', () => {
-    const tieResponse: CompetencyCriteriaGroupsResponse = {
+    const tieResponse: CompetencyCriteriaTree = {
       groups: [
         {
           id: 1,
@@ -291,7 +293,7 @@ describe('lastBottomTierGroupForCourse', () => {
   });
 
   it('returns null when the course-level group has no bottom-tier children yet', () => {
-    const noChildrenResponse: CompetencyCriteriaGroupsResponse = {
+    const noChildrenResponse: CompetencyCriteriaTree = {
       groups: [
         {
           id: 1,
@@ -399,7 +401,7 @@ describe('isRuleTakenInGroup / nextUnusedScore', () => {
 
 /** A tree of course-level groups (ids 1, 2, 3...), each with the given leaf group ids, in order. */
 const buildTree = (courses: Array<{ id: number; ruleGroupIds: number[]; }>) => {
-  const response: CompetencyCriteriaGroupsResponse = {
+  const response: CompetencyCriteriaTree = {
     groups: [
       {
         id: 500,

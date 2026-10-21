@@ -41,7 +41,8 @@ export const buildMockCompetencyAssociationsContextValue = (
     isLoading: false,
     isError: false,
     isSuccess: true,
-    data: { groups: [], criteria: [] },
+    // [review] L5: Adds the two count fields to the default mock data, with no behavior change.
+    data: { groups: [], criteria: [], criteriaCount: 0, totalCriteriaCount: 0 },
   } as unknown as CompetencyAssociationsContextValue['groupsQuery'],
   profileQuery: {
     isLoading: false,
