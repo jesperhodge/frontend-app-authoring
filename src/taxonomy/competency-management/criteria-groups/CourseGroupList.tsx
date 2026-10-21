@@ -35,20 +35,22 @@ const CourseGroupList = () => {
     profileQuery,
     index,
     accessibleCourseGroups,
+    isCourseAccessResolved,
     keyboardFocusRequest,
     consumeKeyboardFocusRequest,
   } = useCompetencyAssociations();
   const emptyStateRef = useRef<HTMLDivElement>(null);
   const takesKeyboardFocus = keyboardFocusRequest?.kind === 'empty';
 
-  // The empty state mounts in the same render that last emptied the list, so
-  // the ref is normally set by the time this runs.
+  // The empty state mounts in the same render that last emptied the list, or
+  // in the one that resolves course access, so the ref is normally set by the
+  // time this runs.
   useEffect(() => {
     if (takesKeyboardFocus && emptyStateRef.current) {
       emptyStateRef.current.focus({ preventScroll: true });
       consumeKeyboardFocusRequest();
     }
-  }, [takesKeyboardFocus, accessibleCourseGroups.length, consumeKeyboardFocusRequest]);
+  }, [takesKeyboardFocus, accessibleCourseGroups.length, isCourseAccessResolved, consumeKeyboardFocusRequest]);
 
   // [review] L2: Uses `isPending`, which also covers a query that is disabled until keys are reported, so the list shows a spinner rather than the empty state. AC "The panel does not look empty while it re-scopes".
   // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-af8feab05becc3de740862a09b54b503b774cae23b893dbf36a8c508620a3b60R52
@@ -66,6 +68,18 @@ const CourseGroupList = () => {
         variant="danger"
         description={intl.formatMessage(messages.courseGroupListErrorMessage)}
       />
+    );
+  }
+
+  // [review] L4: Shows a spinner while the groups have landed but the outlines that decide access have not, so an empty accessible list does not read as no associations. AC "The panel does not look empty while it re-scopes".
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-af8feab05becc3de740862a09b54b503b774cae23b893dbf36a8c508620a3b60R69
+  // Groups can land before their courses' outlines, which decide access; an
+  // empty list then only means "not known yet", so it must not read as empty.
+  if (accessibleCourseGroups.length === 0 && !isCourseAccessResolved) {
+    return (
+      <div className="d-flex justify-content-center py-3">
+        <LoadingSpinner size="sm" />
+      </div>
     );
   }
 

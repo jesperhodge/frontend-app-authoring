@@ -150,6 +150,62 @@ describe('<CourseGroupList />', () => {
     },
   );
 
+  // [review] L4: Pins the access wait: a spinner while the outlines that decide access are loading, focus on the empty state once access resolves, and accessible groups that render without waiting for other courses. AC "The panel does not look empty while it re-scopes".
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-b9cf945ca73eaecee43265981f30964997f44469d0f4191776a0d1a5860b7846R156
+  it('renders a loading state, not the empty state, while course outlines that decide access are still loading', () => {
+    renderList({
+      groupsQuery: loadedPopulatedGroupsQuery,
+      profileQuery: loadedProfileQuery,
+      index: buildCompetencyCriteriaGroupsIndex(populatedGroupsResponse),
+      systemDefaultProfile,
+      accessibleCourseGroups: [],
+      isCourseAccessResolved: false,
+    });
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.queryByText('No content associated.')).not.toBeInTheDocument();
+  });
+
+  it('takes keyboard focus on the empty state once course access resolves, when a request was waiting', () => {
+    const consumeKeyboardFocusRequest = jest.fn();
+    const value = {
+      groupsQuery: loadedEmptyGroupsQuery,
+      profileQuery: loadedProfileQuery,
+      index: buildCompetencyCriteriaGroupsIndex(emptyGroupsResponse),
+      systemDefaultProfile,
+      accessibleCourseGroups: [],
+      keyboardFocusRequest: { kind: 'empty' } as const,
+      consumeKeyboardFocusRequest,
+    };
+    const { rerender } = render(
+      <MockCompetencyAssociationsProvider value={{ ...value, isCourseAccessResolved: false }}>
+        <CourseGroupList />
+      </MockCompetencyAssociationsProvider>,
+    );
+    expect(consumeKeyboardFocusRequest).not.toHaveBeenCalled();
+
+    rerender(
+      <MockCompetencyAssociationsProvider value={{ ...value, isCourseAccessResolved: true }}>
+        <CourseGroupList />
+      </MockCompetencyAssociationsProvider>,
+    );
+
+    expect(screen.getByText('No content associated.').parentElement).toHaveFocus();
+    expect(consumeKeyboardFocusRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the accessible course group sections without waiting on other courses\' outlines', async () => {
+    const index = buildCompetencyCriteriaGroupsIndex(populatedGroupsResponse);
+    renderList({
+      groupsQuery: loadedPopulatedGroupsQuery,
+      profileQuery: loadedProfileQuery,
+      index,
+      systemDefaultProfile,
+      accessibleCourseGroups: index.courseGroups,
+      isCourseAccessResolved: false,
+    });
+    expect(await screen.findByText('course-v1:OrgX+CS101+2024')).toBeInTheDocument();
+  });
+
   it('renders course group sections for every accessible course-level group', async () => {
     const index = buildCompetencyCriteriaGroupsIndex(populatedGroupsResponse);
     renderList({
@@ -242,6 +298,7 @@ describe('<CourseGroupList />', () => {
       { state: 'the groups query is pending', overrides: { groupsQuery: loadingGroupsQuery } },
       { state: 'the groups query waits for course keys', overrides: { groupsQuery: awaitingCourseKeysGroupsQuery } },
       { state: 'the default-rule-profile query is pending', overrides: { profileQuery: loadingProfileQuery } },
+      { state: 'course access is resolving', overrides: { isCourseAccessResolved: false } },
       { state: 'the groups query errored', overrides: { groupsQuery: erroredGroupsQuery } },
       { state: 'the default-rule-profile query errored', overrides: { profileQuery: erroredProfileQuery } },
     ])('shows no empty state while $state', ({ overrides }) => {

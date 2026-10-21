@@ -176,6 +176,9 @@ export interface CompetencyAssociationsContextValue {
   canEditCourse: (courseId: string) => boolean;
   groupsQuery: UseQueryResult<CompetencyCriteriaGroupsResponse>;
   profileQuery: UseQueryResult<CompetencyRuleProfile>;
+  // [review] L4: True until both the groups and the rule profile queries have a result, so the content panel can disable selection. No AC: it keeps an author from selecting content while the data is stale.
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-5eda5440167fbffe62a1249e7213c41b056ab42c2710d3d421d64192b8e80580R177
+  isLoadingAssociations: boolean;
   /** Built from `groupsQuery.data`; `undefined` until that query resolves. */
   index: CompetencyCriteriaGroupsIndex | undefined;
   systemDefaultProfile: CompetencyRuleProfile | undefined;
@@ -189,6 +192,14 @@ export interface CompetencyAssociationsContextValue {
    * per-course outline-fetch results.
    */
   accessibleCourseGroups: CourseCompetencyCriteriaGroup[];
+  // [review] L4: Tells consumers whether every course outline fetch has finished, so an empty list is not read as no associations before access is known. AC "The panel does not look empty while it re-scopes".
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-5eda5440167fbffe62a1249e7213c41b056ab42c2710d3d421d64192b8e80580R191
+  /** Whether every course-level group's outline fetch has finished, either
+   * way. Until then `accessibleCourseGroups` can still be missing a course
+   * that is about to count as accessible, so an empty list is not yet "no
+   * associations".
+   */
+  isCourseAccessResolved: boolean;
   /** The active competency's short external id (e.g. "CCRS-1.3"), shown on
    * an already-associated subsection's badge. `null` when the competency
    * has none.
@@ -325,6 +336,9 @@ export const CompetencyAssociationsProvider = ({
     [groupsQuery.data],
   );
   const systemDefaultProfile = profileQuery.data;
+  // [review] L4: The flag the interface declares, derived from the two queries that decide whether the data is ready.
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-5eda5440167fbffe62a1249e7213c41b056ab42c2710d3d421d64192b8e80580R323
+  const isLoadingAssociations = groupsQuery.isPending || profileQuery.isPending;
   const associatedIds = useMemo(
     () => (groupsQuery.data ? associatedObjectIds(groupsQuery.data) : new Set<string>()),
     [groupsQuery.data],
@@ -496,8 +510,9 @@ export const CompetencyAssociationsProvider = ({
       return;
     }
     if (!index || !systemDefaultProfile) {
-      // Shouldn't happen: the content panel only offers this action once
-      // both queries have resolved.
+      // Only reachable after one of the queries failed, which the
+      // associations section reports: the content panel disables this
+      // action while either is pending (`isLoadingAssociations`).
       return;
     }
 
@@ -749,10 +764,14 @@ export const CompetencyAssociationsProvider = ({
     canEditCourse,
     groupsQuery,
     profileQuery,
+    isLoadingAssociations,
     index,
     systemDefaultProfile,
     associatedObjectIds: associatedIds,
     accessibleCourseGroups,
+    // [review] L4: Exposes the existing outline-resolution flag under the name the interface declares.
+    // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-5eda5440167fbffe62a1249e7213c41b056ab42c2710d3d421d64192b8e80580R752
+    isCourseAccessResolved: allVisibleCourseOutlinesResolved,
     competencyExternalId,
     notifyCoursesDisplayed,
     displayedCourseKeys,
@@ -781,10 +800,12 @@ export const CompetencyAssociationsProvider = ({
     canEditCourse,
     groupsQuery,
     profileQuery,
+    isLoadingAssociations,
     index,
     systemDefaultProfile,
     associatedIds,
     accessibleCourseGroups,
+    allVisibleCourseOutlinesResolved,
     competencyExternalId,
     notifyCoursesDisplayed,
     displayedCourseKeys,

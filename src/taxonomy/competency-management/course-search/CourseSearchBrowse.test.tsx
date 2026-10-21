@@ -6,6 +6,7 @@ import {
   initializeMocks,
   render,
   screen,
+  userEvent,
   waitFor,
   within,
 } from '@src/testUtils';
@@ -1005,6 +1006,65 @@ describe('<CourseSearchBrowse /> and <CourseRow />', () => {
       expectCourseAGroup();
     });
 
+    // [review] L4: Pins that neither the empty message nor an empty-looking panel appears at any step of a page change, including while the outline that decides access is still loading. AC "The panel does not look empty while it re-scopes".
+    // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-4f34a6535c56201720da8c31df2b225a543e6ca075ccf1ef1d99f4067f26f5c4R997
+    it('shows no empty-associations message at any point while re-scoping to a new page', async () => {
+      const page2CoursesReply = deferredReply();
+      const page2GroupsReply = deferredReply();
+      const outlineBReply = deferredReply();
+      axiosMock.onGet(coursesApiUrl).reply((config) => (
+        config.params.page === 2 ? page2CoursesReply.promise : [200, buildResponse([courseA], 2)]
+      ));
+      axiosMock.onGet(groupsUrl).reply((config) => (
+        config.params.course_keys === courseB.courseKey
+          ? page2GroupsReply.promise
+          : [200, buildGroupsResponse(courseA, 1, criteriaAcrossBothCourses)]
+      ));
+      axiosMock.onGet(getCourseOutlineIndexApiUrl(courseA.courseKey)).reply(200, buildOutline(courseA));
+      axiosMock.onGet(getCourseOutlineIndexApiUrl(courseB.courseKey)).reply(() => outlineBReply.promise);
+      renderCourseSearchBrowse();
+      expect(await screen.findByText(outlineNameOf(courseA))).toBeInTheDocument();
+
+      const emptyMessageWatch = watchForText(emptyMessage);
+      try {
+        fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
+
+        // The new page's courses are loading.
+        await waitFor(() => {
+          expect(axiosMock.history.get.some((req) => req.url === coursesApiUrl && req.params.page === 2)).toBe(true);
+        });
+        expect(screen.queryByText(emptyMessage)).not.toBeInTheDocument();
+
+        // The new page is listed; its groups are loading.
+        await act(async () => {
+          page2CoursesReply.settle([200, buildResponse([courseB], 2)]);
+        });
+        expect(await screen.findByText('Course B')).toBeInTheDocument();
+        await waitFor(() => expect(groupsRequests()).toHaveLength(2));
+        expect(within(associationsSection()).getByRole('status')).toBeInTheDocument();
+        expect(screen.queryByText(emptyMessage)).not.toBeInTheDocument();
+
+        // The new page's groups are in; its course's outline, which decides access, is loading.
+        await act(async () => {
+          page2GroupsReply.settle([200, buildGroupsResponse(courseB, 2, criteriaAcrossBothCourses)]);
+        });
+        await waitFor(() => {
+          expect(axiosMock.history.get.some((req) => req.url === getCourseOutlineIndexApiUrl(courseB.courseKey)))
+            .toBe(true);
+        });
+        expect(screen.queryByText(emptyMessage)).not.toBeInTheDocument();
+
+        await act(async () => {
+          outlineBReply.settle([200, buildOutline(courseB)]);
+        });
+        expect(await screen.findByText(outlineNameOf(courseB))).toBeInTheDocument();
+
+        expect(emptyMessageWatch.wasSeen()).toBe(false);
+      } finally {
+        emptyMessageWatch.stop();
+      }
+    });
+
     it('drops the previous page\'s Course Groups once the next page\'s courses fail to load', async () => {
       axiosMock.onGet(coursesApiUrl).reply((config) => (
         config.params.page === 2 ? [500] : [200, buildResponse([courseA], 2)]
@@ -1084,6 +1144,54 @@ describe('<CourseSearchBrowse /> and <CourseRow />', () => {
       });
       expect(within(associationsSection()).getByRole('status')).toBeInTheDocument();
       expect(screen.queryByText(outlineNameOf(courseA))).not.toBeInTheDocument();
+    });
+
+    // [review] L4: Pins that a subsection is disabled until the groups have loaded and then creates the criterion. No AC: it guards the create flow under scoped loading.
+    // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-4f34a6535c56201720da8c31df2b225a543e6ca075ccf1ef1d99f4067f26f5c4R1135
+    it('disables subsection selection until the listed courses\' groups load, then sends the create request', async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const createUrl = competencyManagementApiUrls.createCompetencyCriterion(tagId);
+      const groupsReply = deferredReply();
+      axiosMock.onGet(coursesApiUrl).reply(200, buildResponse([courseA]));
+      axiosMock.onGet(groupsUrl).reply(() => groupsReply.promise);
+      axiosMock.onGet(getCourseOutlineIndexApiUrl(courseA.courseKey)).reply(
+        200,
+        buildOutlineIndex({
+          sections: [{
+            id: 'section-1',
+            displayName: 'Section 1',
+            children: [{ id: 'sub-1a', displayName: 'Subsection 1A', overrides: { graded: true } }],
+          }],
+        }),
+      );
+      axiosMock.onPost(createUrl).reply(201, {
+        id: 901,
+        group_id: 20,
+        rule_profile_id: 1,
+        rule_type_override: null,
+        rule_payload_override: null,
+        object_tag_id: tagId,
+      });
+      renderCourseSearchBrowse();
+
+      expect(await screen.findByText('Course A')).toBeInTheDocument();
+      await waitFor(() => expect(groupsRequests()).toHaveLength(1));
+      // The course row's own chevron, then its outline's section once that has loaded.
+      await user.click(screen.getByRole('button', { name: 'Expand' }));
+      await user.click(await screen.findByRole('button', { name: 'Expand' }));
+
+      expect(await screen.findByRole('button', { name: 'Subsection 1A' })).toBeDisabled();
+
+      await act(async () => {
+        groupsReply.settle([200, { groups: [], criteria: [], criteria_count: 0, total_criteria_count: 0 }]);
+      });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Subsection 1A' })).toBeEnabled());
+
+      await user.click(screen.getByRole('button', { name: 'Subsection 1A' }));
+
+      await waitFor(() => expect(axiosMock.history.post).toHaveLength(1));
+      expect(axiosMock.history.post[0].url).toEqual(createUrl);
+      expect(JSON.parse(axiosMock.history.post[0].data)).toEqual({ object_id: 'sub-1a' });
     });
   });
 
