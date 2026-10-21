@@ -1,3 +1,5 @@
+// [review] Comment on this file in the original PR: https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-2278dc8110d2ca50a700efab47cb7b744981068cea46652792b8277716daf12e
+// [review] L2 reports the listed course keys to the associations provider and gates the associations section on the course list status. L3 adds the summary line and the second request that fetches the unfiltered course total.
 import {
   forwardRef,
   type MouseEventHandler,
@@ -26,7 +28,8 @@ import AlertMessage from '@src/generic/alert-message';
 import { LoadingSpinner } from '@src/generic/Loading';
 import { DATE_FORMAT } from '@src/constants';
 import { useStudioHomeCoursesV2 } from '@src/studio-home/data/apiHooks';
-import type { CompetencyTreeNode } from '../CompetencyTree';
+import { useCompetencyAssociations } from '@src/taxonomy/competency-management/CompetencyAssociationsContext';
+import type { CompetencyTreeNode } from '@src/taxonomy/competency-management/CompetencyTree';
 import CourseRow from './CourseRow';
 import CriteriaAssociationsSection from './CriteriaAssociationsSection';
 import messages from './messages';
@@ -161,7 +164,9 @@ const CourseSearchBrowse = ({ activeCompetency }: CourseSearchBrowseProps) => {
 
   const handleClearDateRange = () => handleDateRangeChange([null, null]);
 
-  const { data, isLoading, isError } = useStudioHomeCoursesV2({
+  // [review] L2: Also reads `status` and `isSuccess` of the course list query, which decide when to report keys and what the section shows.
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-2278dc8110d2ca50a700efab47cb7b744981068cea46652792b8277716daf12eR168
+  const { data, status, isLoading, isError, isSuccess } = useStudioHomeCoursesV2({
     page,
     pageSize: PAGE_SIZE,
     search,
@@ -169,6 +174,20 @@ const CourseSearchBrowse = ({ activeCompetency }: CourseSearchBrowseProps) => {
     startDateOnOrAfter: dateRange[0] ? formatDateOnlyParam(dateRange[0]) : undefined,
     startDateOnOrBefore: dateRange[1] ? formatDateOnlyParam(dateRange[1]) : undefined,
   });
+
+  // [review] L2: Reports the listed keys only after a successful load, so a loading or failed list never scopes the panel; an empty successful page reports an empty list. AC "The course list fails to load" and AC "A search that matches no course".
+  // [review] Forward reference: the destructure below also reads `displayedCourseKeys` and `groupsQuery`, which only L3 uses, for the summary counts.
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-2278dc8110d2ca50a700efab47cb7b744981068cea46652792b8277716daf12eR178
+  const { notifyCoursesDisplayed, displayedCourseKeys, groupsQuery } = useCompetencyAssociations();
+  const listedCourseKeys = useMemo(
+    () => (isSuccess ? data.results.courses.map((course) => course.courseKey) : undefined),
+    [isSuccess, data],
+  );
+  useEffect(() => {
+    if (listedCourseKeys) {
+      notifyCoursesDisplayed(listedCourseKeys);
+    }
+  }, [listedCourseKeys, notifyCoursesDisplayed]);
 
   const courses = data?.results.courses ?? [];
   const numPages = data?.numPages ?? 0;
@@ -266,7 +285,9 @@ const CourseSearchBrowse = ({ activeCompetency }: CourseSearchBrowseProps) => {
           </div>
         </Stack>
       </div>
-      <CriteriaAssociationsSection competencyName={activeCompetency.value} />
+      {/* [review] L2: Passes the course list status, so the groups render only after the list has loaded and a failed list shows no groups. AC "Turning to another page of courses re-scopes the associations panel" and AC "The course list fails to load". */}
+      {/* [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-2278dc8110d2ca50a700efab47cb7b744981068cea46652792b8277716daf12eR297 */}
+      <CriteriaAssociationsSection competencyName={activeCompetency.value} courseListStatus={status} />
       <div className="course-search-browse__container">
         <div className="course-search-browse__section-label">
           {intl.formatMessage(messages.coursesAndContentLabel)}

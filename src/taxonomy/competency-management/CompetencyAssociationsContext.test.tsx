@@ -1,3 +1,6 @@
+// [review] Comment on this file in the original PR: https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-17641acbc7e277a63d9e9227eb3a5081775ea8fed9fd1448b8503ca8bf258629
+// [review] L2 makes the test consumer report course keys and tests placeholder discarding. L5 retypes the fixtures and adds the two count fields.
+import { useEffect } from 'react';
 import { buildOutlineIndex } from '@src/course-outline/__mocks__';
 import { getCourseOutlineIndexApiUrl } from '@src/course-outline/data';
 import {
@@ -219,9 +222,27 @@ const twoCoursesWithCriteriaResponse: CompetencyCriteriaGroupsResponse = {
 
 const outlineFixture = buildOutlineIndex();
 
+// [review] L2: The test consumer reports course keys the way `CourseSearchBrowse` does, because the groups query stays disabled until keys are reported.
+// [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-17641acbc7e277a63d9e9227eb3a5081775ea8fed9fd1448b8503ca8bf258629R252
+/** The course keys `TestConsumer` reports by default: every course the fixtures above use. */
+const defaultReportedCourseKeys = [courseA, courseB];
+
+interface TestConsumerProps {
+  /** Reported through `notifyCoursesDisplayed` on mount and on change, the way
+   * `CourseSearchBrowse` reports its page; `null` reports nothing.
+   */
+  reportedCourseKeys?: string[] | null;
+}
+
 /** Exposes every context value/action as plain, clickable test hooks. */
-const TestConsumer = () => {
+const TestConsumer = ({ reportedCourseKeys = defaultReportedCourseKeys }: TestConsumerProps) => {
   const ctx = useCompetencyAssociations();
+  const { notifyCoursesDisplayed } = ctx;
+  useEffect(() => {
+    if (reportedCourseKeys !== null) {
+      notifyCoursesDisplayed(reportedCourseKeys);
+    }
+  }, [notifyCoursesDisplayed, reportedCourseKeys]);
   return (
     <div>
       <div data-testid="focus">{JSON.stringify(ctx.focus)}</div>
@@ -293,12 +314,13 @@ const TestConsumer = () => {
   );
 };
 
-const renderProvider = () =>
-  render(
-    <CompetencyAssociationsProvider tagId={tagId} competencyName="Competency" competencyExternalId="CCRS-1.3">
-      <TestConsumer />
-    </CompetencyAssociationsProvider>,
-  );
+const providerTree = (props: TestConsumerProps = {}) => (
+  <CompetencyAssociationsProvider tagId={tagId} competencyName="Competency" competencyExternalId="CCRS-1.3">
+    <TestConsumer {...props} />
+  </CompetencyAssociationsProvider>
+);
+
+const renderProvider = (props: TestConsumerProps = {}) => render(providerTree(props));
 
 describe('CompetencyAssociationsProvider', () => {
   beforeEach(() => {
@@ -575,6 +597,52 @@ describe('CompetencyAssociationsProvider', () => {
 
       expect(screen.getByTestId('focus')).toHaveTextContent('"groupId":10');
       expect(screen.getByTestId('focus')).toHaveTextContent('"ruleKey":"grade:gte:0.7:percent"');
+    });
+  });
+
+  // [review] L2: Pins the placeholder discard: different keys discard it, the same keys in a new array keep it, and a focused saved group stays focused. No AC: nothing in the ticket covers placeholders.
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-17641acbc7e277a63d9e9227eb3a5081775ea8fed9fd1448b8503ca8bf258629R628
+  describe('listed course changes (#683)', () => {
+    beforeEach(() => {
+      axiosMock.onGet(groupsUrl).reply(200, singleGroupResponse);
+      axiosMock.onGet(profileUrl).reply(200, profileResponse);
+      axiosMock.onGet(getCourseOutlineIndexApiUrl(courseA)).reply(200, outlineFixture);
+    });
+
+    it.each([
+      ['rule box', 'add-placeholder-rule-10'],
+      ['group', 'add-placeholder-group-1'],
+    ])('discards a placeholder %s when different course keys are reported', async (_label, addButton) => {
+      const { rerender } = renderProvider();
+      await waitFor(() => expect(screen.getByTestId('groups-status')).toHaveTextContent('groups-success'));
+      fireEvent.click(screen.getByText(addButton));
+      expect(screen.getByTestId('has-placeholder')).toHaveTextContent('true');
+
+      rerender(providerTree({ reportedCourseKeys: [courseOther] }));
+
+      expect(screen.getByTestId('has-placeholder')).toHaveTextContent('false');
+      expect(screen.getByTestId('focus')).toHaveTextContent('null');
+    });
+
+    it('keeps a placeholder when the same course keys are reported in a new array', async () => {
+      const { rerender } = renderProvider();
+      await waitFor(() => expect(screen.getByTestId('groups-status')).toHaveTextContent('groups-success'));
+      fireEvent.click(screen.getByText('add-placeholder-rule-10'));
+
+      rerender(providerTree({ reportedCourseKeys: [...defaultReportedCourseKeys] }));
+
+      expect(screen.getByTestId('has-placeholder')).toHaveTextContent('true');
+      expect(screen.getByTestId('focus')).toHaveTextContent('{"groupId":10,"ruleKey":null}');
+    });
+
+    it('keeps a focused saved group when different course keys are reported', async () => {
+      const { rerender } = renderProvider();
+      await waitFor(() => expect(screen.getByTestId('groups-status')).toHaveTextContent('groups-success'));
+      fireEvent.click(screen.getByText('focus-rulebox-10'));
+
+      rerender(providerTree({ reportedCourseKeys: [courseOther] }));
+
+      expect(screen.getByTestId('focus')).toHaveTextContent(`{"groupId":10,"ruleKey":"${defaultRuleKey}"}`);
     });
   });
 

@@ -1,3 +1,5 @@
+// [review] Comment on this file in the original PR: https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-b9cf945ca73eaecee43265981f30964997f44469d0f4191776a0d1a5860b7846
+// [review] L2 tests the loading and empty states under scoping. L4 tests the wait for course access. L5 adds the two count fields to the fixtures.
 import type { UseQueryResult } from '@tanstack/react-query';
 import { initializeMocks, render, screen } from '@src/testUtils';
 import { buildMockCompetencyAssociationsContextValue, MockCompetencyAssociationsProvider } from '../testHelpers';
@@ -42,20 +44,27 @@ const populatedGroupsResponse: CompetencyCriteriaGroupsResponse = {
 };
 
 const buildQueryResult = <T,>(overrides: Partial<UseQueryResult<T>>): UseQueryResult<T> => ({
+  isPending: false,
   isLoading: false,
   isError: false,
   data: undefined,
   ...overrides,
 } as UseQueryResult<T>);
 
-const loadingGroupsQuery = buildQueryResult<CompetencyCriteriaGroupsResponse>({ isLoading: true });
+const loadingGroupsQuery = buildQueryResult<CompetencyCriteriaGroupsResponse>({ isPending: true, isLoading: true });
+/** Disabled until the course list reports its keys: pending, but not loading, since nothing is fetching. */
+const awaitingCourseKeysGroupsQuery = buildQueryResult<CompetencyCriteriaGroupsResponse>({
+  isPending: true,
+  isLoading: false,
+  fetchStatus: 'idle',
+});
 const loadedEmptyGroupsQuery = buildQueryResult<CompetencyCriteriaGroupsResponse>({ data: emptyGroupsResponse });
 const loadedPopulatedGroupsQuery = buildQueryResult<CompetencyCriteriaGroupsResponse>({
   data: populatedGroupsResponse,
 });
 const erroredGroupsQuery = buildQueryResult<CompetencyCriteriaGroupsResponse>({ isError: true });
 
-const loadingProfileQuery = buildQueryResult<CompetencyRuleProfile>({ isLoading: true });
+const loadingProfileQuery = buildQueryResult<CompetencyRuleProfile>({ isPending: true, isLoading: true });
 const loadedProfileQuery = buildQueryResult<CompetencyRuleProfile>({ data: systemDefaultProfile });
 const erroredProfileQuery = buildQueryResult<CompetencyRuleProfile>({ isError: true });
 
@@ -75,6 +84,14 @@ describe('<CourseGroupList />', () => {
   it('renders a loading state while the groups query is still loading', () => {
     renderList({ groupsQuery: loadingGroupsQuery, profileQuery: loadedProfileQuery });
     expect(screen.getByRole('status')).toBeInTheDocument();
+  });
+
+  // [review] L2: Pins that a groups query waiting for course keys shows a spinner, not the empty state. AC "The panel does not look empty while it re-scopes".
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-b9cf945ca73eaecee43265981f30964997f44469d0f4191776a0d1a5860b7846R94
+  it('renders a loading state, not the empty state, while the groups query waits for course keys', () => {
+    renderList({ groupsQuery: awaitingCourseKeysGroupsQuery, profileQuery: loadedProfileQuery });
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.queryByText('No content associated.')).not.toBeInTheDocument();
   });
 
   it('renders a loading state while the default-rule-profile query is still loading, even if groups already loaded', () => {
@@ -175,5 +192,62 @@ describe('<CourseGroupList />', () => {
     });
 
     expect(screen.getByText('No content associated.').parentElement).not.toHaveFocus();
+  });
+
+  // [review] L2: Pins the empty state under scoping: it shows for every count combination, and it does not show while a query is pending or failed. AC "A competency with no associations anywhere" and AC "The associations fail to load for the courses now listed".
+  // [review] Note: AC "Associations exist, but none in the courses currently listed" asks for a second message naming the out-of-view count. The first set of cases below asserts the single existing message for 0 of 1 and 1 of 3.
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-b9cf945ca73eaecee43265981f30964997f44469d0f4191776a0d1a5860b7846R254
+  describe('the empty state when no associations are in the listed courses', () => {
+    const noAssociationsMessage = 'No content associated.';
+    const noAssociationsPromptMessage = 'Make content selections to associate this competency with course content.';
+
+    /** The component ignores the counts, so the empty arrays here needn't agree with them. */
+    const buildCountsResponse = (criteriaCount: number, totalCriteriaCount: number) => ({
+      ...emptyGroupsResponse,
+      criteriaCount,
+      totalCriteriaCount,
+    });
+
+    const renderEmptyList = (
+      data: CompetencyCriteriaGroupsResponse,
+      overrides: Parameters<typeof buildMockCompetencyAssociationsContextValue>[0] = {},
+    ) =>
+      renderList({
+        groupsQuery: buildQueryResult<CompetencyCriteriaGroupsResponse>({ data }),
+        profileQuery: loadedProfileQuery,
+        index: buildCompetencyCriteriaGroupsIndex(data),
+        systemDefaultProfile,
+        accessibleCourseGroups: [],
+        ...overrides,
+      });
+
+    it.each([
+      { criteriaCount: 0, totalCriteriaCount: 0 },
+      // Some of the competency's criteria are in courses not listed.
+      { criteriaCount: 0, totalCriteriaCount: 1 },
+      { criteriaCount: 1, totalCriteriaCount: 3 },
+      // The listed courses hold every criterion, but none of those courses is accessible.
+      { criteriaCount: 2, totalCriteriaCount: 2 },
+    ])(
+      'shows the no-associations messages when criteriaCount is $criteriaCount of totalCriteriaCount '
+        + '$totalCriteriaCount',
+      ({ criteriaCount, totalCriteriaCount }) => {
+        renderEmptyList(buildCountsResponse(criteriaCount, totalCriteriaCount));
+        expect(screen.getByText(noAssociationsMessage)).toBeInTheDocument();
+        expect(screen.getByText(noAssociationsPromptMessage)).toBeInTheDocument();
+      },
+    );
+
+    it.each([
+      { state: 'the groups query is pending', overrides: { groupsQuery: loadingGroupsQuery } },
+      { state: 'the groups query waits for course keys', overrides: { groupsQuery: awaitingCourseKeysGroupsQuery } },
+      { state: 'the default-rule-profile query is pending', overrides: { profileQuery: loadingProfileQuery } },
+      { state: 'the groups query errored', overrides: { groupsQuery: erroredGroupsQuery } },
+      { state: 'the default-rule-profile query errored', overrides: { profileQuery: erroredProfileQuery } },
+    ])('shows no empty state while $state', ({ overrides }) => {
+      renderEmptyList(buildCountsResponse(1, 3), overrides);
+      expect(screen.queryByText(noAssociationsMessage)).not.toBeInTheDocument();
+      expect(screen.queryByText(noAssociationsPromptMessage)).not.toBeInTheDocument();
+    });
   });
 });

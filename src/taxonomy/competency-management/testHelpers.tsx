@@ -1,3 +1,5 @@
+// [review] Comment on this file in the original PR: https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-725fc2257ac8d6362b26a6f77aed5d62db15331846c9d1ff3de26da5ad3c90b7
+// [review] L2 adds the key-reporting members to the mock context value, L4 adds the loading and access flags, and L5 adds the two counts to the mock groups data.
 import type { ReactNode } from 'react';
 import {
   CompetencyAssociationsContext,
@@ -52,6 +54,8 @@ export const buildMockCompetencyAssociationsContextValue = (
   associatedObjectIds: new Set(),
   accessibleCourseGroups: [],
   competencyExternalId: null,
+  notifyCoursesDisplayed: jest.fn(),
+  displayedCourseKeys: undefined,
   competencyName: 'Test Competency',
   ...overrides,
 });

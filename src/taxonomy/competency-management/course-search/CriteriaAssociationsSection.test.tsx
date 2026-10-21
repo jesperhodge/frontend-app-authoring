@@ -1,20 +1,64 @@
-import { initializeMocks, render, screen } from '@src/testUtils';
-import { CompetencyAssociationsProvider } from '../CompetencyAssociationsContext';
+// [review] Comment on this file in the original PR: https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-99c695df1a154f3467c103ee51618d1db70718a9c89fdf819ebf964edc87e04e
+// [review] L2 tests that the section waits for reported course keys and for a loaded course list.
+import { useEffect } from 'react';
+import {
+  initializeMocks,
+  render,
+  screen,
+  waitFor,
+} from '@src/testUtils';
+import { CompetencyAssociationsProvider, useCompetencyAssociations } from '../CompetencyAssociationsContext';
 import { apiUrls } from '../data/api';
-import CriteriaAssociationsSection from './CriteriaAssociationsSection';
+import CriteriaAssociationsSection, { type CriteriaAssociationsSectionProps } from './CriteriaAssociationsSection';
 
 let axiosMock: ReturnType<typeof initializeMocks>['axiosMock'];
 
 const tagId = 42;
 const competencyName = 'Data Literacy';
 
-const renderSection = () => (
+const noCourseKeys: string[] = [];
+
+/** Stands in for `CourseSearchBrowse`, which reports its listed courses' keys once its page loads. */
+const ReportCourseKeys = ({ courseKeys }: { courseKeys: string[]; }) => {
+  const { notifyCoursesDisplayed } = useCompetencyAssociations();
+  useEffect(() => notifyCoursesDisplayed(courseKeys), [notifyCoursesDisplayed, courseKeys]);
+  return null;
+};
+
+/** Shows when the profile query has landed, so a test can tell the groups query alone is holding the list back. */
+const ProfileLoadedProbe = () => {
+  const { profileQuery } = useCompetencyAssociations();
+  return profileQuery.isSuccess ? <span>profile loaded</span> : null;
+};
+
+/** @param reportedCourseKeys `null` leaves the keys unreported, as before the course list's first page loads. */
+const renderSection = (
+  reportedCourseKeys: string[] | null = noCourseKeys,
+  courseListStatus: CriteriaAssociationsSectionProps['courseListStatus'] = 'success',
+) => (
   render(
     <CompetencyAssociationsProvider tagId={tagId} competencyName="Competency" competencyExternalId="CCRS-1.3">
-      <CriteriaAssociationsSection competencyName={competencyName} />
+      {reportedCourseKeys !== null && <ReportCourseKeys courseKeys={reportedCourseKeys} />}
+      <ProfileLoadedProbe />
+      <CriteriaAssociationsSection competencyName={competencyName} courseListStatus={courseListStatus} />
     </CompetencyAssociationsProvider>,
   )
 );
+
+const profileResponse = {
+  count: 1,
+  next: null,
+  previous: null,
+  results: [{
+    id: 1,
+    scope_type: 'system_default',
+    rule_type: 'grade',
+    rule_payload: { op: 'gte', value: 0.7, scale: 'percent' },
+    archived: false,
+  }],
+};
+
+const noGroupsResponse = { groups: [], criteria: [], criteria_count: 0, total_criteria_count: 0 };
 
 describe('<CriteriaAssociationsSection />', () => {
   beforeEach(() => {
@@ -31,38 +75,55 @@ describe('<CriteriaAssociationsSection />', () => {
   });
 
   it('renders the empty-associations state once both queries resolve with no groups', async () => {
-    axiosMock.onGet(apiUrls.competencyCriteriaGroups(tagId)).reply(200, { groups: [], criteria: [] });
-    axiosMock.onGet(apiUrls.defaultCompetencyRuleProfile()).reply(200, {
-      count: 1,
-      next: null,
-      previous: null,
-      results: [{
-        id: 1,
-        scope_type: 'system_default',
-        rule_type: 'grade',
-        rule_payload: { op: 'gte', value: 0.7, scale: 'percent' },
-        archived: false,
-      }],
-    });
+    axiosMock.onGet(apiUrls.competencyCriteriaGroups(tagId)).reply(200, noGroupsResponse);
+    axiosMock.onGet(apiUrls.defaultCompetencyRuleProfile()).reply(200, profileResponse);
     renderSection();
 
     expect(await screen.findByText('No content associated.')).toBeInTheDocument();
   });
 
+  // [review] L2: Pins the three waiting states: unreported keys send no request and show no empty state, a pending course list shows a spinner, and a failed list shows only the header lines. AC "The panel does not look empty while it re-scopes" and AC "The course list fails to load".
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-99c695df1a154f3467c103ee51618d1db70718a9c89fdf819ebf964edc87e04eR83
+  it('keeps loading, sends no groups request, and shows no empty state until course keys are reported', async () => {
+    axiosMock.onGet(apiUrls.competencyCriteriaGroups(tagId)).reply(200, noGroupsResponse);
+    axiosMock.onGet(apiUrls.defaultCompetencyRuleProfile()).reply(200, profileResponse);
+    renderSection(null);
+
+    // Only the unreported keys hold the list back once the profile has landed.
+    expect(await screen.findByText('profile loaded')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.queryByText('No content associated.')).not.toBeInTheDocument();
+    expect(axiosMock.history.get.filter((req) => req.url === apiUrls.competencyCriteriaGroups(tagId))).toHaveLength(0);
+  });
+
+  it('shows a spinner, not the groups\' empty state, while the course list is pending', async () => {
+    axiosMock.onGet(apiUrls.competencyCriteriaGroups(tagId)).reply(200, noGroupsResponse);
+    axiosMock.onGet(apiUrls.defaultCompetencyRuleProfile()).reply(200, profileResponse);
+    renderSection(noCourseKeys, 'pending');
+
+    // The groups request is the one that would otherwise show the empty state.
+    await waitFor(() => {
+      expect(axiosMock.history.get.some((req) => req.url === apiUrls.competencyCriteriaGroups(tagId))).toBe(true);
+    });
+    expect(await screen.findByText('profile loaded')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.queryByText('No content associated.')).not.toBeInTheDocument();
+  });
+
+  it('shows only the header lines once the course list has failed', async () => {
+    axiosMock.onGet(apiUrls.competencyCriteriaGroups(tagId)).reply(200, noGroupsResponse);
+    axiosMock.onGet(apiUrls.defaultCompetencyRuleProfile()).reply(200, profileResponse);
+    renderSection(null, 'error');
+
+    expect(await screen.findByText('profile loaded')).toBeInTheDocument();
+    expect(screen.getByText('Demonstrate Mastery For Data Literacy')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByText('No content associated.')).not.toBeInTheDocument();
+  });
+
   it('renders a failed state when the groups request fails', async () => {
     axiosMock.onGet(apiUrls.competencyCriteriaGroups(tagId)).reply(500);
-    axiosMock.onGet(apiUrls.defaultCompetencyRuleProfile()).reply(200, {
-      count: 1,
-      next: null,
-      previous: null,
-      results: [{
-        id: 1,
-        scope_type: 'system_default',
-        rule_type: 'grade',
-        rule_payload: { op: 'gte', value: 0.7, scale: 'percent' },
-        archived: false,
-      }],
-    });
+    axiosMock.onGet(apiUrls.defaultCompetencyRuleProfile()).reply(200, profileResponse);
     renderSection();
 
     expect(await screen.findByText('There was a problem loading this competency\'s associations. Please try again.'))
