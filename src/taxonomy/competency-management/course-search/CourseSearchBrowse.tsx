@@ -20,7 +20,7 @@ import {
   Stack,
 } from '@openedx/paragon';
 import { Calendar, Close } from '@openedx/paragon/icons';
-import { debounce } from 'lodash';
+import { debounce, isEqual } from 'lodash';
 import moment from 'moment';
 import DatePicker from 'react-datepicker';
 
@@ -30,6 +30,7 @@ import { DATE_FORMAT } from '@src/constants';
 import { useStudioHomeCoursesV2 } from '@src/studio-home/data/apiHooks';
 import { useCompetencyAssociations } from '@src/taxonomy/competency-management/CompetencyAssociationsContext';
 import type { CompetencyTreeNode } from '@src/taxonomy/competency-management/CompetencyTree';
+import CourseListSummary from './CourseListSummary';
 import CourseRow from './CourseRow';
 import CriteriaAssociationsSection from './CriteriaAssociationsSection';
 import messages from './messages';
@@ -46,6 +47,8 @@ export interface CourseSearchBrowseProps {
 }
 
 const PAGE_SIZE = 10;
+
+const ACCESSIBLE_COURSES_COUNT_PARAMS = { pageSize: 1 };
 
 // The backend's `start_date_on_or_after`/`start_date_on_or_before` filters
 // 400 on anything but a plain `YYYY-MM-DD` value, so this uses the picked
@@ -174,6 +177,9 @@ const CourseSearchBrowse = ({ activeCompetency }: CourseSearchBrowseProps) => {
     startDateOnOrAfter: dateRange[0] ? formatDateOnlyParam(dateRange[0]) : undefined,
     startDateOnOrBefore: dateRange[1] ? formatDateOnlyParam(dateRange[1]) : undefined,
   });
+  // [review] L3: A second course-list request with no filters and the smallest page, whose count is the total of accessible courses. It is fetched once because its key has no page, search or date. AC "Neither total moves as I narrow the course list".
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-2278dc8110d2ca50a700efab47cb7b744981068cea46652792b8277716daf12eR176
+  const accessibleCourseCount = useStudioHomeCoursesV2(ACCESSIBLE_COURSES_COUNT_PARAMS).data?.count;
 
   // [review] L2: Reports the listed keys only after a successful load, so a loading or failed list never scopes the panel; an empty successful page reports an empty list. AC "The course list fails to load" and AC "A search that matches no course".
   // [review] Forward reference: the destructure below also reads `displayedCourseKeys` and `groupsQuery`, which only L3 uses, for the summary counts.
@@ -191,6 +197,10 @@ const CourseSearchBrowse = ({ activeCompetency }: CourseSearchBrowseProps) => {
 
   const courses = data?.results.courses ?? [];
   const numPages = data?.numPages ?? 0;
+  // [review] L3: Takes the counts only when the context's keys equal the listed keys, so the summary never pairs this page's courses with another page's associations. AC "The summary states how many associations are in view and how many exist in total".
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-2278dc8110d2ca50a700efab47cb7b744981068cea46652792b8277716daf12eR191
+  const associationCounts = isEqual(displayedCourseKeys, listedCourseKeys) ? groupsQuery.data : undefined;
+  const showSummary = isSuccess && accessibleCourseCount !== undefined && associationCounts !== undefined;
 
   let body: ReactNode;
   if (isLoading) {
@@ -284,6 +294,18 @@ const CourseSearchBrowse = ({ activeCompetency }: CourseSearchBrowseProps) => {
             )}
           </div>
         </Stack>
+        {/* [review] L3: Renders the summary line under the search field. ACs "The summary states how many courses are listed out of all I can reach" and "The summary states how many associations are in view and how many exist in total". */}
+        {/* [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-2278dc8110d2ca50a700efab47cb7b744981068cea46652792b8277716daf12eR286 */}
+        {showSummary && (
+          <CourseListSummary
+            listedCount={courses.length}
+            totalCount={accessibleCourseCount}
+            search={search}
+            dateRange={dateRange}
+            listedAssociationCount={associationCounts.criteriaCount}
+            totalAssociationCount={associationCounts.totalCriteriaCount}
+          />
+        )}
       </div>
       {/* [review] L2: Passes the course list status, so the groups render only after the list has loaded and a failed list shows no groups. AC "Turning to another page of courses re-scopes the associations panel" and AC "The course list fails to load". */}
       {/* [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-2278dc8110d2ca50a700efab47cb7b744981068cea46652792b8277716daf12eR297 */}

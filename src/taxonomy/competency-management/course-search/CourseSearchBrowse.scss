@@ -1,3 +1,5 @@
+// [review] Comment on this file in the original PR: https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-e126d7a4f3340b4bc8be2ac2e2a0cb175a4b4e43c8d3edcf123a2b5037f875c1
+// [review] L3 lets the summary line break long unbroken text.
 // Scoped under `.course-search-browse`, same reason as
 // `../CompetencyTree.scss`'s own `.competency-tree` scoping.
 //
@@ -39,6 +41,12 @@
     overflow: hidden;
 
     --pgn-size-search-field-border-radius: 6px;
+  }
+
+  // [review] L3: Lets a long search term wrap instead of scrolling the page sideways. AC "The summary line on a small screen".
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-e126d7a4f3340b4bc8be2ac2e2a0cb175a4b4e43c8d3edcf123a2b5037f875c1R44
+  &__summary {
+    overflow-wrap: anywhere;
   }
 
   // Plain layout wrapper holding the "Courses & Content" label and every

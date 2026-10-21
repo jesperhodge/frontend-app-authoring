@@ -47,16 +47,26 @@ const buildResponse = (courses: Course[], numPages: number = 1) => ({
 // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-4f34a6535c56201720da8c31df2b225a543e6ca075ccf1ef1d99f4067f26f5c4R45
 /** The params of the summary line's unfiltered accessible-course-count request, which hits the same endpoint. */
 const accessibleCoursesCountParams = { page_size: 1 };
+const accessibleCourseCount = 208;
+const buildAccessibleCountResponse = (count: number = accessibleCourseCount) => ({
+  results: { courses: [buildCourse()] },
+  numPages: count,
+  count,
+});
 
 /** A request for a page of the course list itself, not the accessible-course-count one. */
 const isCourseListRequest = (req: { url?: string; params?: unknown; }) => (
   req.url === coursesApiUrl && !isEqual(req.params, accessibleCoursesCountParams)
 );
+const accessibleCountRequests = () =>
+  axiosMock.history.get.filter(
+    (req) => req.url === coursesApiUrl && isEqual(req.params, accessibleCoursesCountParams),
+  );
 
 // Scoped to the course list's own requests: `axiosMock.history.get` also holds
 // `CompetencyAssociationsProvider`'s requests and the accessible-course-count one.
 const lastRequestParams = () => {
-  const courseRequests = axiosMock.history.get.filter((req) => req.url === coursesApiUrl);
+  const courseRequests = axiosMock.history.get.filter(isCourseListRequest);
   return courseRequests[courseRequests.length - 1].params;
 };
 
@@ -99,11 +109,15 @@ describe('<CourseSearchBrowse /> and <CourseRow />', () => {
 
   beforeEach(() => {
     ({ axiosMock } = initializeMocks());
+    // Registered before any test's own course-list handler, so it alone
+    // answers the accessible-course-count request (handlers match in order).
+    axiosMock.onGet(coursesApiUrl, { params: accessibleCoursesCountParams })
+      .reply(200, buildAccessibleCountResponse());
     // The associations section mounts alongside the course list and fires
     // its own requests; mocked here to the empty-associations shape so
     // tests that don't care about it aren't left in a loading state.
     axiosMock.onGet(competencyManagementApiUrls.competencyCriteriaGroups(Number(activeCompetency.id)))
-      .reply(200, { groups: [], criteria: [] });
+      .reply(200, { groups: [], criteria: [], criteria_count: 0, total_criteria_count: 0 });
     axiosMock.onGet(competencyManagementApiUrls.defaultCompetencyRuleProfile())
       .reply(200, {
         count: 1,
@@ -342,6 +356,340 @@ describe('<CourseSearchBrowse /> and <CourseRow />', () => {
     });
   });
 
+  // [review] L3: Pins the summary line: courses listed of the accessible total, the clause for each applied filter, the unfiltered total fetched once, truncation of a long search term, and no summary while the list or the total is loading or failed. ACs "The summary states how many courses are listed out of all I can reach", "The summary names whichever filters narrowed the course list", "Neither total moves as I narrow the course list" and "A very long search term is shown truncated in the summary".
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-4f34a6535c56201720da8c31df2b225a543e6ca075ccf1ef1d99f4067f26f5c4R356
+  describe('the course-list summary line', () => {
+    const courseA = buildCourse({ courseKey: 'course-v1:OrgX+CSA+2024', displayName: 'Course A' });
+    const courseB = buildCourse({ courseKey: 'course-v1:OrgX+CSB+2024', displayName: 'Course B' });
+    const courseC = buildCourse({ courseKey: 'course-v1:OrgX+CSC+2024', displayName: 'Course C' });
+
+    /** Its counts and filters are each wrapped in `<strong>`, so its own text alone is what starts with "Showing". */
+    const summaryLine = () => screen.getByText(/^Showing/);
+    const findSummaryLine = () => screen.findByText(/^Showing/);
+    const querySummaryLine = () => screen.queryByText(/^Showing/);
+
+    const typeSearch = (value: string) => {
+      fireEvent.change(screen.getByRole('searchbox'), { target: { value } });
+      act(() => {
+        jest.advanceTimersByTime(400);
+      });
+    };
+
+    const openCalendar = () => fireEvent.click(screen.getByLabelText('Start Date'));
+    /** Clicks a day of the open range calendar: the first pick is the start date, the second the end date. */
+    const pickDay = (day: string) => {
+      fireEvent.click(screen.getByText(day).closest('.react-datepicker__day') as HTMLElement);
+    };
+
+    beforeEach(() => {
+      // Pins the month the range calendar opens on, so picked days have known dates.
+      jest.setSystemTime(new Date(2026, 6, 15));
+    });
+
+    it('shows how many courses are listed out of every accessible course, naming no filter when none is applied', async () => {
+      axiosMock.onGet(coursesApiUrl).reply(200, buildResponse([courseA, courseB]));
+      renderCourseSearchBrowse();
+
+      expect(await findSummaryLine()).toHaveTextContent(
+        /^Showing 2 of 208 Courses, and 0 of 0 Competency Criteria Associations$/,
+      );
+    });
+
+    it('says "Course", not "Courses", when only one course is accessible', async () => {
+      axiosMock.onGet(coursesApiUrl, { params: accessibleCoursesCountParams })
+        .reply(200, buildAccessibleCountResponse(1));
+      axiosMock.onGet(coursesApiUrl).reply(200, buildResponse([courseA]));
+      renderCourseSearchBrowse();
+
+      expect(await findSummaryLine()).toHaveTextContent(
+        /^Showing 1 of 1 Course, and 0 of 0 Competency Criteria Associations$/,
+      );
+    });
+
+    it('names the search term once the search has debounced, against the same accessible total', async () => {
+      axiosMock.onGet(coursesApiUrl).reply((config) => [
+        200,
+        buildResponse(config.params.search === 'pro' ? [courseA] : [courseA, courseB, courseC]),
+      ]);
+      renderCourseSearchBrowse();
+      expect(await findSummaryLine()).toHaveTextContent(
+        /^Showing 3 of 208 Courses, and 0 of 0 Competency Criteria Associations$/,
+      );
+
+      typeSearch('pro');
+
+      await waitFor(() => {
+        expect(summaryLine()).toHaveTextContent(
+          /^Showing 1 of 208 Courses containing “pro”, and 0 of 0 Competency Criteria Associations$/,
+        );
+      });
+    });
+
+    it('names a start date alone as "on or after", then the whole range once an end date is picked', async () => {
+      axiosMock.onGet(coursesApiUrl).reply(200, buildResponse([courseA, courseB]));
+      renderCourseSearchBrowse();
+      await findSummaryLine();
+
+      openCalendar();
+      pickDay('10');
+      await waitFor(() => {
+        expect(summaryLine()).toHaveTextContent(
+          /^Showing 2 of 208 Courses starting on or after 07-10-2026, and 0 of 0 Competency Criteria Associations$/,
+        );
+      });
+
+      pickDay('20');
+      await waitFor(() => {
+        expect(summaryLine()).toHaveTextContent(
+          /^Showing 2 of 208 Courses starting between 07-10-2026 and 07-20-2026, and 0 of 0 Competency Criteria Associations$/,
+        );
+      });
+    });
+
+    it('names both the search term and the start-date filter when both are applied', async () => {
+      axiosMock.onGet(coursesApiUrl).reply(200, buildResponse([courseA, courseB]));
+      renderCourseSearchBrowse();
+      await findSummaryLine();
+
+      typeSearch('pro');
+      await waitFor(() => {
+        expect(summaryLine()).toHaveTextContent(
+          /^Showing 2 of 208 Courses containing “pro”, and 0 of 0 Competency Criteria Associations$/,
+        );
+      });
+
+      openCalendar();
+      pickDay('10');
+      await waitFor(() => {
+        expect(summaryLine()).toHaveTextContent(
+          /^Showing 2 of 208 Courses containing “pro”, starting on or after 07-10-2026, and 0 of 0 Competency Criteria Associations$/,
+        );
+      });
+
+      pickDay('20');
+      await waitFor(() => {
+        expect(summaryLine()).toHaveTextContent(
+          /^Showing 2 of 208 Courses containing “pro”, starting between 07-10-2026 and 07-20-2026, and 0 of 0 Competency Criteria Associations$/,
+        );
+      });
+    });
+
+    it('drops the filter clauses again once the search and the dates are cleared', async () => {
+      axiosMock.onGet(coursesApiUrl).reply(200, buildResponse([courseA, courseB]));
+      renderCourseSearchBrowse();
+      await findSummaryLine();
+
+      typeSearch('pro');
+      openCalendar();
+      pickDay('10');
+      await waitFor(() => {
+        expect(summaryLine()).toHaveTextContent(
+          /containing “pro”, starting on or after 07-10-2026, and 0 of 0 Competency Criteria Associations$/,
+        );
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Clear dates' }));
+      typeSearch('');
+      await waitFor(() => {
+        expect(summaryLine()).toHaveTextContent(
+          /^Showing 2 of 208 Courses, and 0 of 0 Competency Criteria Associations$/,
+        );
+      });
+    });
+
+    it('shows zero courses listed against the accessible total when a search matches nothing', async () => {
+      axiosMock.onGet(coursesApiUrl).reply((config) => [
+        200,
+        buildResponse(config.params.search ? [] : [courseA, courseB]),
+      ]);
+      renderCourseSearchBrowse();
+      await findSummaryLine();
+
+      typeSearch('nonexistent');
+
+      expect(await screen.findByText('No courses match your search.')).toBeInTheDocument();
+      expect(summaryLine()).toHaveTextContent(
+        /^Showing 0 of 208 Courses containing “nonexistent”, and 0 of 0 Competency Criteria Associations$/,
+      );
+    });
+
+    it('fetches the accessible total once, unfiltered, and keeps it across paging, searching, and date changes', async () => {
+      axiosMock.onGet(coursesApiUrl).reply(200, buildResponse([courseA, courseB], 3));
+      renderCourseSearchBrowse();
+      await findSummaryLine();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
+      await waitFor(() => expect(lastRequestParams()).toMatchObject({ page: 2 }));
+      typeSearch('pro');
+      await waitFor(() => expect(lastRequestParams()).toMatchObject({ search: 'pro' }));
+      openCalendar();
+      pickDay('10');
+      await waitFor(() => expect(lastRequestParams().start_date_on_or_after).toBe('2026-07-10'));
+
+      await waitFor(() => {
+        expect(summaryLine()).toHaveTextContent(/^Showing 2 of 208 Courses containing “pro”, starting on or after/);
+      });
+      expect(accessibleCountRequests()).toHaveLength(1);
+    });
+
+    it('truncates a long search term in the summary, while the course list still filters on the whole term', async () => {
+      const longSearchTerm = `${'a'.repeat(50)}${'b'.repeat(10)}`;
+      axiosMock.onGet(coursesApiUrl).reply(200, buildResponse([courseA]));
+      renderCourseSearchBrowse();
+      await findSummaryLine();
+
+      typeSearch(longSearchTerm);
+
+      await waitFor(() => expect(lastRequestParams()).toMatchObject({ search: longSearchTerm }));
+      await waitFor(() => {
+        expect(summaryLine()).toHaveTextContent(`containing “${'a'.repeat(50)}…”`);
+      });
+      expect(summaryLine()).not.toHaveTextContent(longSearchTerm);
+    });
+
+    it('shows nothing while the course list loads, and nothing once it fails', async () => {
+      const coursesReply = deferredReply();
+      axiosMock.onGet(coursesApiUrl).reply(() => coursesReply.promise);
+      renderCourseSearchBrowse();
+
+      await waitFor(() => expect(accessibleCountRequests()).toHaveLength(1));
+      expect(querySummaryLine()).not.toBeInTheDocument();
+
+      await act(async () => {
+        coursesReply.settle([500, {}]);
+      });
+
+      expect(await screen.findByText('There was a problem loading courses. Please try again.')).toBeInTheDocument();
+      expect(querySummaryLine()).not.toBeInTheDocument();
+    });
+
+    it('shows nothing while the next page loads, rather than the previous page\'s count', async () => {
+      const pageTwoReply = deferredReply();
+      axiosMock.onGet(coursesApiUrl).reply((config) => (
+        config.params.page === 2 ? pageTwoReply.promise : [200, buildResponse([courseA, courseB], 2)]
+      ));
+      renderCourseSearchBrowse();
+      expect(await findSummaryLine()).toHaveTextContent(
+        /^Showing 2 of 208 Courses, and 0 of 0 Competency Criteria Associations$/,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
+      await waitFor(() => expect(lastRequestParams()).toMatchObject({ page: 2 }));
+      expect(querySummaryLine()).not.toBeInTheDocument();
+
+      await act(async () => {
+        pageTwoReply.settle([200, buildResponse([courseC], 2)]);
+      });
+      expect(await findSummaryLine()).toHaveTextContent(
+        /^Showing 1 of 208 Courses, and 0 of 0 Competency Criteria Associations$/,
+      );
+    });
+
+    it('shows nothing, but still lists the courses, when the accessible total fails to load', async () => {
+      axiosMock.onGet(coursesApiUrl, { params: accessibleCoursesCountParams }).reply(500);
+      axiosMock.onGet(coursesApiUrl).reply(200, buildResponse([courseA]));
+      renderCourseSearchBrowse();
+
+      expect(await screen.findByText('Course A')).toBeInTheDocument();
+      await waitFor(() => expect(accessibleCountRequests()).toHaveLength(1));
+      expect(querySummaryLine()).not.toBeInTheDocument();
+    });
+
+    // [review] L3: Pins the association half of the line: in view of total, the singular form, and no line while the groups load or fail. ACs "The summary states how many associations are in view and how many exist in total" and "The associations fail to load for the courses now listed".
+    // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-4f34a6535c56201720da8c31df2b225a543e6ca075ccf1ef1d99f4067f26f5c4R593
+    describe('its association clause', () => {
+      const groupsUrl = competencyManagementApiUrls.competencyCriteriaGroups(Number(activeCompetency.id));
+      /** Only the counts matter to the summary, so the payload carries no groups or criteria. */
+      const buildCountsResponse = (criteriaCount: number, totalCriteriaCount: number) => ({
+        groups: [],
+        criteria: [],
+        criteria_count: criteriaCount,
+        total_criteria_count: totalCriteriaCount,
+      });
+      const associationsErrorMessage = 'There was a problem loading this competency\'s associations. Please try again.';
+
+      it('counts the associations in the listed courses out of all of the competency\'s associations', async () => {
+        axiosMock.onGet(coursesApiUrl).reply(200, buildResponse([courseA, courseB]));
+        axiosMock.onGet(groupsUrl).reply(200, buildCountsResponse(2, 5));
+        renderCourseSearchBrowse();
+
+        expect(await findSummaryLine()).toHaveTextContent(
+          /^Showing 2 of 208 Courses, and 2 of 5 Competency Criteria Associations$/,
+        );
+      });
+
+      it('says "Association", not "Associations", when the competency has only one', async () => {
+        axiosMock.onGet(coursesApiUrl).reply(200, buildResponse([courseA]));
+        axiosMock.onGet(groupsUrl).reply(200, buildCountsResponse(1, 1));
+        renderCourseSearchBrowse();
+
+        expect(await findSummaryLine()).toHaveTextContent(
+          /^Showing 1 of 208 Courses, and 1 of 1 Competency Criteria Association$/,
+        );
+      });
+
+      it('keeps the association clause alongside the search and start-date clauses', async () => {
+        axiosMock.onGet(coursesApiUrl).reply(200, buildResponse([courseA, courseB]));
+        axiosMock.onGet(groupsUrl).reply(200, buildCountsResponse(0, 3));
+        renderCourseSearchBrowse();
+        await findSummaryLine();
+
+        typeSearch('pro');
+        openCalendar();
+        pickDay('10');
+        pickDay('20');
+
+        await waitFor(() => {
+          expect(summaryLine()).toHaveTextContent(
+            /^Showing 2 of 208 Courses containing “pro”, starting between 07-10-2026 and 07-20-2026, and 0 of 3 Competency Criteria Associations$/,
+          );
+        });
+      });
+
+      it('re-counts the associations for each page of courses', async () => {
+        axiosMock.onGet(coursesApiUrl).reply((config) => [
+          200,
+          buildResponse(config.params.page === 2 ? [courseC] : [courseA, courseB], 2),
+        ]);
+        axiosMock.onGet(groupsUrl).reply((config) => [
+          200,
+          config.params.course_keys === courseC.courseKey ? buildCountsResponse(1, 4) : buildCountsResponse(3, 4),
+        ]);
+        renderCourseSearchBrowse();
+        expect(await findSummaryLine()).toHaveTextContent(
+          /^Showing 2 of 208 Courses, and 3 of 4 Competency Criteria Associations$/,
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
+
+        expect(await screen.findByText('Course C')).toBeInTheDocument();
+        await waitFor(() => {
+          expect(summaryLine()).toHaveTextContent(
+            /^Showing 1 of 208 Courses, and 1 of 4 Competency Criteria Associations$/,
+          );
+        });
+      });
+
+      it('shows nothing while the listed courses\' associations load, and nothing once they fail', async () => {
+        const groupsReply = deferredReply();
+        axiosMock.onGet(coursesApiUrl).reply(200, buildResponse([courseA]));
+        axiosMock.onGet(groupsUrl).reply(() => groupsReply.promise);
+        renderCourseSearchBrowse();
+
+        expect(await screen.findByText('Course A')).toBeInTheDocument();
+        await waitFor(() => expect(axiosMock.history.get.some((req) => req.url === groupsUrl)).toBe(true));
+        expect(querySummaryLine()).not.toBeInTheDocument();
+
+        await act(async () => {
+          groupsReply.settle([500, {}]);
+        });
+
+        expect(await screen.findByText(associationsErrorMessage)).toBeInTheDocument();
+        expect(querySummaryLine()).not.toBeInTheDocument();
+      });
+    });
+  });
+
   // [review] L2: Pins the panel scoping: the groups request carries the listed keys in list order, also as an empty value, a page, search or date change starts a new request and drops the old groups, returning to a page restores its group, and a loading or failed course list or groups request never reads as empty. ACs "The associations panel opens scoped to the courses first listed", "Turning to another page of courses re-scopes the associations panel", "Searching or changing the date filter re-scopes the associations panel", "An association outside the listed courses comes back when its course is listed again", "The associations fail to load for the courses now listed" and "The course list fails to load".
   // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-4f34a6535c56201720da8c31df2b225a543e6ca075ccf1ef1d99f4067f26f5c4R686
   describe('scoping the associations to the listed courses', () => {
@@ -577,6 +925,42 @@ describe('<CourseSearchBrowse /> and <CourseRow />', () => {
       expect(groupsRequests()[1].params).toEqual({ course_keys: courseA.courseKey });
       expect(await screen.findByText(outlineNameOf(courseA))).toBeInTheDocument();
       expect(screen.queryByText(outlineNameOf(courseB))).not.toBeInTheDocument();
+    });
+
+    // [review] L3: Pins that switching competency re-counts the summary for the new competency while the listed courses are reused. This case asserts summary text, so it lands with the summary. AC "Switching competencies re-scopes and re-counts".
+    // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-4f34a6535c56201720da8c31df2b225a543e6ca075ccf1ef1d99f4067f26f5c4R921
+    it('re-scopes and re-counts on a competency change, reusing the listed courses without refetching them', async () => {
+      const otherCompetency: CompetencyTreeNode = { id: 2, value: 'Other Competency' };
+      const otherGroupsUrl = competencyManagementApiUrls.competencyCriteriaGroups(Number(otherCompetency.id));
+      const otherGroupsRequests = () => axiosMock.history.get.filter((req) => req.url === otherGroupsUrl);
+      const listedCourseKeys = [courseA, courseB].map((course) => course.courseKey).join(',');
+      axiosMock.onGet(coursesApiUrl).reply(200, buildResponse([courseA, courseB]));
+      axiosMock.onGet(groupsUrl).reply(200, buildGroupsResponse(courseA, 1));
+      axiosMock.onGet(otherGroupsUrl).reply(200, buildEmptyGroupsResponse(3));
+      axiosMock.onGet(getCourseOutlineIndexApiUrl(courseA.courseKey)).reply(200, buildOutline(courseA));
+      axiosMock.onGet(getCourseOutlineIndexApiUrl(courseB.courseKey)).reply(200, buildOutline(courseB));
+      const { rerender } = renderCourseSearchBrowse();
+      expect(await screen.findByText(outlineNameOf(courseA))).toBeInTheDocument();
+      expect(groupsRequests()).toHaveLength(1);
+      expect(groupsRequests()[0].params).toEqual({ course_keys: listedCourseKeys });
+      const courseListRequestCount = axiosMock.history.get.filter(isCourseListRequest).length;
+
+      rerender(courseSearchBrowseTree(otherCompetency));
+
+      const section = associationsSection();
+      expect(
+        await within(section).findByText(emptyMessage),
+      ).toBeInTheDocument();
+      await waitFor(() =>
+        expect(screen.getByText(/^Showing/)).toHaveTextContent(/, and 0 of 3 Competency Criteria Associations$/)
+      );
+      expect(within(section).getByText('Demonstrate Mastery For Other Competency')).toBeInTheDocument();
+      expect(screen.queryByText(outlineNameOf(courseA))).not.toBeInTheDocument();
+      expect(otherGroupsRequests()).toHaveLength(1);
+      expect(otherGroupsRequests()[0].params).toEqual({ course_keys: listedCourseKeys });
+      expect(axiosMock.history.get.filter(isCourseListRequest)).toHaveLength(courseListRequestCount);
+      expect(screen.getByText('Course A')).toBeInTheDocument();
+      expect(screen.getByText('Course B')).toBeInTheDocument();
     });
 
     it('shows a page\'s Course Group again, unchanged, on returning to that page', async () => {
