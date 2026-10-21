@@ -1,3 +1,5 @@
+// [review] Comment on this file in the original PR: https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-ba8eb047d99411bda6e012cafec352c4e3388e16d560fc0027ec35034e062940
+// [review] L4 disables subsection selection while the groups or the rule profile are still loading.
 import { type ReactNode, useState } from 'react';
 
 import { useIntl } from '@edx/frontend-platform/i18n';
@@ -50,6 +52,7 @@ const SubsectionRow = ({ subsection, courseId }: SubsectionRowProps) => {
     canEditCourse,
     competencyExternalId,
     isDeletingGroup,
+    isLoadingAssociations,
   } = useCompetencyAssociations();
   // The real `course_index` response populates `.id`, never `.usageKey`
   // (declared on the shared `XBlockBase` type but always `undefined` here).
@@ -107,6 +110,8 @@ const SubsectionRow = ({ subsection, courseId }: SubsectionRowProps) => {
     );
   }
 
+  // [review] L4: Disables the row while the associations load, so a click cannot create a criterion against data that is not there yet. No AC: it guards the create flow under scoped loading.
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-ba8eb047d99411bda6e012cafec352c4e3388e16d560fc0027ec35034e062940R118
   return (
     <Button
       variant="tertiary"
@@ -114,7 +119,7 @@ const SubsectionRow = ({ subsection, courseId }: SubsectionRowProps) => {
       block
       className={rowClassName}
       data-associated={isAssociated}
-      disabled={isDeletingGroup}
+      disabled={isDeletingGroup || isLoadingAssociations}
       onClick={() => associateSubsection(subsection.id, courseId)}
     >
       {rowContent}

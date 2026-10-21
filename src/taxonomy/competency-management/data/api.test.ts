@@ -1,3 +1,6 @@
+// [review] Comment on this file in the original PR: https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-226c2814d19d1f75f3edd9e4a2c58f73cb126bedb323dd041685725ec0345347
+// [review] L1 tests that the request carries the course keys in the given order, and an empty value for an empty list, and that both counts are camel-cased.
+import { getAuthenticatedHttpClient } from '@edx/frontend-platform/auth';
 import { initializeMocks } from '@src/testUtils';
 import {
   apiUrls,
@@ -11,17 +14,63 @@ import {
 import type { CompetencyCriteriaGroupsResponse } from './types';
 
 const tagId = 42;
+const emptyGroupsBody = { groups: [], criteria: [], criteria_count: 0, total_criteria_count: 0 };
+
+/** The `course_keys` value as it appears in the serialized request URL, or `null` when the param is absent. */
+const sentCourseKeysParam = (request: Parameters<ReturnType<typeof getAuthenticatedHttpClient>['getUri']>[0]) => (
+  new URL(getAuthenticatedHttpClient().getUri(request)).searchParams.get('course_keys')
+);
 
 describe('competency-management api calls', () => {
+  // [review] L1: Pins the response shape with both counts, using distinct nonzero values so a swapped or missed camel-casing fails. AC "The summary states how many associations are in view and how many exist in total".
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-226c2814d19d1f75f3edd9e4a2c58f73cb126bedb323dd041685725ec0345347R23
   it('gets a competency\'s criteria groups', async () => {
     const { axiosMock } = initializeMocks();
-    const mockResponse: CompetencyCriteriaGroupsResponse = { groups: [], criteria: [] };
-    axiosMock.onGet(apiUrls.competencyCriteriaGroups(tagId)).reply(200, mockResponse);
+    // Distinct, nonzero counts, so a missed or swapped camel-casing of either one fails the test.
+    axiosMock.onGet(apiUrls.competencyCriteriaGroups(tagId)).reply(200, {
+      groups: [],
+      criteria: [],
+      criteria_count: 2,
+      total_criteria_count: 5,
+    });
+    const expected: CompetencyCriteriaGroupsResponse = {
+      groups: [],
+      criteria: [],
+      criteriaCount: 2,
+      totalCriteriaCount: 5,
+    };
 
-    const result = await getCompetencyCriteriaGroups(tagId);
+    const result = await getCompetencyCriteriaGroups(tagId, ['course-v1:OrgX+CS101+2024']);
 
     expect(axiosMock.history.get[0].url).toEqual(apiUrls.competencyCriteriaGroups(tagId));
-    expect(result).toEqual(mockResponse);
+    expect(result).toEqual(expected);
+  });
+
+  // [review] L1: Pins the request contract: comma-joined keys in list order, and `course_keys=` with an empty value for an empty list. AC "The associations panel opens scoped to the courses first listed" and AC "A search that matches no course".
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-226c2814d19d1f75f3edd9e4a2c58f73cb126bedb323dd041685725ec0345347R45
+  it('sends the course keys as one comma-separated course_keys param, in the order given', async () => {
+    const { axiosMock } = initializeMocks();
+    axiosMock.onGet(apiUrls.competencyCriteriaGroups(tagId)).reply(200, emptyGroupsBody);
+    // Deliberately not sorted, so a sort anywhere on the way out would show.
+    const courseKeys = ['course-v1:OrgX+CS301+2024', 'course-v1:OrgX+CS101+2024', 'course-v1:OrgX+CS201+2024'];
+
+    await getCompetencyCriteriaGroups(tagId, courseKeys);
+
+    const request = axiosMock.history.get[0];
+    expect(request.params).toEqual({ course_keys: courseKeys.join(',') });
+    expect(sentCourseKeysParam(request)).toEqual(courseKeys.join(','));
+  });
+
+  it('still sends course_keys, as an empty value, for an empty list', async () => {
+    const { axiosMock } = initializeMocks();
+    axiosMock.onGet(apiUrls.competencyCriteriaGroups(tagId)).reply(200, emptyGroupsBody);
+
+    await getCompetencyCriteriaGroups(tagId, []);
+
+    const request = axiosMock.history.get[0];
+    expect(request.params).toEqual({ course_keys: '' });
+    // Omitting the param would mean "unscoped" to the backend; an empty value means "no listed courses".
+    expect(sentCourseKeysParam(request)).toEqual('');
   });
 
   it('gets the default competency rule profile out of the paginated list response, camelCased', async () => {

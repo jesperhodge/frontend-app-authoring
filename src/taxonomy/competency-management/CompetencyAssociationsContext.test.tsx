@@ -1,3 +1,6 @@
+// [review] Comment on this file in the original PR: https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-17641acbc7e277a63d9e9227eb3a5081775ea8fed9fd1448b8503ca8bf258629
+// [review] L2 makes the test consumer report course keys and tests placeholder discarding. L5 retypes the fixtures and adds the two count fields.
+import { useEffect } from 'react';
 import { buildOutlineIndex } from '@src/course-outline/__mocks__';
 import { getCourseOutlineIndexApiUrl } from '@src/course-outline/data';
 import {
@@ -10,7 +13,7 @@ import {
 } from '@src/testUtils';
 import { CompetencyAssociationsProvider, useCompetencyAssociations } from './CompetencyAssociationsContext';
 import { apiUrls } from './data/api';
-import type { CompetencyCriteriaGroupsResponse } from './data/types';
+import type { CompetencyCriteriaTree } from './data/types';
 
 let axiosMock: ReturnType<typeof initializeMocks>['axiosMock'];
 let mockShowToast: ReturnType<typeof initializeMocks>['mockShowToast'];
@@ -25,6 +28,15 @@ const profileUrl = apiUrls.defaultCompetencyRuleProfile();
 const createUrl = apiUrls.createCompetencyCriterion(tagId);
 const updateGroupOperatorUrl = apiUrls.updateCompetencyCriteriaGroup(tagId, 10);
 const updateRuleScoreUrl = apiUrls.updateCompetencyCriteriaRule(10);
+
+// [review] L5: The fixtures from here on use the tree type and gain the two count fields, with no behavior change.
+/** The criteria-groups wire body. Its groups and criteria are written camelCase here, which `camelCaseObject`
+ * leaves unchanged; the counts are the snake_case fields it converts.
+ */
+type CriteriaGroupsHttpResponse = CompetencyCriteriaTree & {
+  criteria_count: number;
+  total_criteria_count: number;
+};
 
 /** `#773`'s real response envelope: a paginated list, not a single object -
  * see `CompetencyRuleProfileListResponse` in `./data/types`.
@@ -49,7 +61,7 @@ const profileResponse = {
  * with one criterion (`existing-sub`, no override - resolves through the
  * default profile above).
  */
-const singleGroupResponse: CompetencyCriteriaGroupsResponse = {
+const singleGroupResponse: CriteriaGroupsHttpResponse = {
   groups: [
     {
       id: 500,
@@ -83,12 +95,14 @@ const singleGroupResponse: CompetencyCriteriaGroupsResponse = {
       rulePayloadOverride: null,
     },
   ],
+  criteria_count: 1,
+  total_criteria_count: 1,
 };
 
 /** Same course-level group, but two leaf groups (10 and 11) - so "exactly
  * one bottom-tier group" is false.
  */
-const twoGroupsResponse: CompetencyCriteriaGroupsResponse = {
+const twoGroupsResponse: CriteriaGroupsHttpResponse = {
   groups: [
     {
       id: 500,
@@ -114,10 +128,12 @@ const twoGroupsResponse: CompetencyCriteriaGroupsResponse = {
     { id: 11, parentId: 1, tagId, courseKey: null, name: 'leaf', ordering: 1, logicOperator: 'AND', archived: false },
   ],
   criteria: [],
+  criteria_count: 0,
+  total_criteria_count: 0,
 };
 
 /** Like `singleGroupResponse`, but its only box is gte 75%, so the 70% default is free. */
-const uniqueDefaultResponse: CompetencyCriteriaGroupsResponse = {
+const uniqueDefaultResponse: CriteriaGroupsHttpResponse = {
   ...singleGroupResponse,
   criteria: [
     {
@@ -129,16 +145,23 @@ const uniqueDefaultResponse: CompetencyCriteriaGroupsResponse = {
       rulePayloadOverride: { op: 'gte', value: 0.75, scale: 'percent' },
     },
   ],
+  criteria_count: 1,
+  total_criteria_count: 1,
 };
 
-const noGroupsResponse: CompetencyCriteriaGroupsResponse = { groups: [], criteria: [] };
+const noGroupsResponse: CriteriaGroupsHttpResponse = {
+  groups: [],
+  criteria: [],
+  criteria_count: 0,
+  total_criteria_count: 0,
+};
 
 /** Two course-level groups under the same root: courseA (id 1, leaf group
  * 10) and courseB (id 2, leaf group 20) - used to prove a course whose own
  * outline fetch fails is excluded from `accessibleCourseGroups` while a
  * sibling course whose outline succeeds is not.
  */
-const twoCoursesResponse: CompetencyCriteriaGroupsResponse = {
+const twoCoursesResponse: CriteriaGroupsHttpResponse = {
   groups: [
     {
       id: 500,
@@ -174,10 +197,12 @@ const twoCoursesResponse: CompetencyCriteriaGroupsResponse = {
     { id: 20, parentId: 2, tagId, courseKey: null, name: 'leaf', ordering: 0, logicOperator: 'AND', archived: false },
   ],
   criteria: [],
+  criteria_count: 0,
+  total_criteria_count: 0,
 };
 
 /** Like `twoCoursesResponse`, but group 20 has a criterion, so focusing it yields a real rule key. */
-const courseExpansionResponse: CompetencyCriteriaGroupsResponse = {
+const courseExpansionResponse: CriteriaGroupsHttpResponse = {
   ...twoCoursesResponse,
   criteria: [
     {
@@ -189,39 +214,65 @@ const courseExpansionResponse: CompetencyCriteriaGroupsResponse = {
       rulePayloadOverride: null,
     },
   ],
+  criteria_count: 1,
+  total_criteria_count: 1,
 };
 
 const defaultRuleKey = 'grade:gte:0.7:percent';
 
 /** `twoGroupsResponse`'s two leaf groups, each holding one default-rule criterion. */
-const twoGroupsWithCriteriaResponse: CompetencyCriteriaGroupsResponse = {
+const twoGroupsWithCriteriaResponse: CriteriaGroupsHttpResponse = {
   ...twoGroupsResponse,
   criteria: [
     { id: 901, objectId: 'sub-a', groupId: 10, ruleProfileId: 1, ruleTypeOverride: null, rulePayloadOverride: null },
     { id: 902, objectId: 'sub-b', groupId: 11, ruleProfileId: 1, ruleTypeOverride: null, rulePayloadOverride: null },
   ],
+  criteria_count: 2,
+  total_criteria_count: 2,
 };
 
 /** `twoGroupsWithCriteriaResponse` after group 10 was deleted. */
-const afterDeletingGroup10Response: CompetencyCriteriaGroupsResponse = {
+const afterDeletingGroup10Response: CriteriaGroupsHttpResponse = {
   groups: twoGroupsWithCriteriaResponse.groups.filter((group) => group.id !== 10),
   criteria: twoGroupsWithCriteriaResponse.criteria.filter((criterion) => criterion.groupId !== 10),
+  criteria_count: 1,
+  total_criteria_count: 1,
 };
 
 /** Course A (group 10) and course B (group 20), each leaf holding one default-rule criterion. */
-const twoCoursesWithCriteriaResponse: CompetencyCriteriaGroupsResponse = {
+const twoCoursesWithCriteriaResponse: CriteriaGroupsHttpResponse = {
   ...twoCoursesResponse,
   criteria: [
     { id: 901, objectId: 'sub-a', groupId: 10, ruleProfileId: 1, ruleTypeOverride: null, rulePayloadOverride: null },
     { id: 902, objectId: 'sub-b', groupId: 20, ruleProfileId: 1, ruleTypeOverride: null, rulePayloadOverride: null },
   ],
+  criteria_count: 2,
+  total_criteria_count: 2,
 };
 
 const outlineFixture = buildOutlineIndex();
 
+// [review] L2: The test consumer reports course keys the way `CourseSearchBrowse` does, because the groups query stays disabled until keys are reported.
+// [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-17641acbc7e277a63d9e9227eb3a5081775ea8fed9fd1448b8503ca8bf258629R252
+/** The course keys `TestConsumer` reports by default: every course the fixtures above use. */
+const defaultReportedCourseKeys = [courseA, courseB];
+
+interface TestConsumerProps {
+  /** Reported through `notifyCoursesDisplayed` on mount and on change, the way
+   * `CourseSearchBrowse` reports its page; `null` reports nothing.
+   */
+  reportedCourseKeys?: string[] | null;
+}
+
 /** Exposes every context value/action as plain, clickable test hooks. */
-const TestConsumer = () => {
+const TestConsumer = ({ reportedCourseKeys = defaultReportedCourseKeys }: TestConsumerProps) => {
   const ctx = useCompetencyAssociations();
+  const { notifyCoursesDisplayed } = ctx;
+  useEffect(() => {
+    if (reportedCourseKeys !== null) {
+      notifyCoursesDisplayed(reportedCourseKeys);
+    }
+  }, [notifyCoursesDisplayed, reportedCourseKeys]);
   return (
     <div>
       <div data-testid="focus">{JSON.stringify(ctx.focus)}</div>
@@ -293,12 +344,13 @@ const TestConsumer = () => {
   );
 };
 
-const renderProvider = () =>
-  render(
-    <CompetencyAssociationsProvider tagId={tagId} competencyName="Competency" competencyExternalId="CCRS-1.3">
-      <TestConsumer />
-    </CompetencyAssociationsProvider>,
-  );
+const providerTree = (props: TestConsumerProps = {}) => (
+  <CompetencyAssociationsProvider tagId={tagId} competencyName="Competency" competencyExternalId="CCRS-1.3">
+    <TestConsumer {...props} />
+  </CompetencyAssociationsProvider>
+);
+
+const renderProvider = (props: TestConsumerProps = {}) => render(providerTree(props));
 
 describe('CompetencyAssociationsProvider', () => {
   beforeEach(() => {
@@ -575,6 +627,52 @@ describe('CompetencyAssociationsProvider', () => {
 
       expect(screen.getByTestId('focus')).toHaveTextContent('"groupId":10');
       expect(screen.getByTestId('focus')).toHaveTextContent('"ruleKey":"grade:gte:0.7:percent"');
+    });
+  });
+
+  // [review] L2: Pins the placeholder discard: different keys discard it, the same keys in a new array keep it, and a focused saved group stays focused. No AC: nothing in the ticket covers placeholders.
+  // [review] https://github.com/AShatsila/frontend-app-authoring/pull/6/files#diff-17641acbc7e277a63d9e9227eb3a5081775ea8fed9fd1448b8503ca8bf258629R628
+  describe('listed course changes (#683)', () => {
+    beforeEach(() => {
+      axiosMock.onGet(groupsUrl).reply(200, singleGroupResponse);
+      axiosMock.onGet(profileUrl).reply(200, profileResponse);
+      axiosMock.onGet(getCourseOutlineIndexApiUrl(courseA)).reply(200, outlineFixture);
+    });
+
+    it.each([
+      ['rule box', 'add-placeholder-rule-10'],
+      ['group', 'add-placeholder-group-1'],
+    ])('discards a placeholder %s when different course keys are reported', async (_label, addButton) => {
+      const { rerender } = renderProvider();
+      await waitFor(() => expect(screen.getByTestId('groups-status')).toHaveTextContent('groups-success'));
+      fireEvent.click(screen.getByText(addButton));
+      expect(screen.getByTestId('has-placeholder')).toHaveTextContent('true');
+
+      rerender(providerTree({ reportedCourseKeys: [courseOther] }));
+
+      expect(screen.getByTestId('has-placeholder')).toHaveTextContent('false');
+      expect(screen.getByTestId('focus')).toHaveTextContent('null');
+    });
+
+    it('keeps a placeholder when the same course keys are reported in a new array', async () => {
+      const { rerender } = renderProvider();
+      await waitFor(() => expect(screen.getByTestId('groups-status')).toHaveTextContent('groups-success'));
+      fireEvent.click(screen.getByText('add-placeholder-rule-10'));
+
+      rerender(providerTree({ reportedCourseKeys: [...defaultReportedCourseKeys] }));
+
+      expect(screen.getByTestId('has-placeholder')).toHaveTextContent('true');
+      expect(screen.getByTestId('focus')).toHaveTextContent('{"groupId":10,"ruleKey":null}');
+    });
+
+    it('keeps a focused saved group when different course keys are reported', async () => {
+      const { rerender } = renderProvider();
+      await waitFor(() => expect(screen.getByTestId('groups-status')).toHaveTextContent('groups-success'));
+      fireEvent.click(screen.getByText('focus-rulebox-10'));
+
+      rerender(providerTree({ reportedCourseKeys: [courseOther] }));
+
+      expect(screen.getByTestId('focus')).toHaveTextContent(`{"groupId":10,"ruleKey":"${defaultRuleKey}"}`);
     });
   });
 
@@ -1003,8 +1101,8 @@ describe('CompetencyAssociationsProvider', () => {
 
     /** Serves `initial` once, then `refetched` (held until `release` is called) for every later GET. */
     const mockGroupsReads = (
-      initial: CompetencyCriteriaGroupsResponse,
-      refetched: CompetencyCriteriaGroupsResponse,
+      initial: CriteriaGroupsHttpResponse,
+      refetched: CriteriaGroupsHttpResponse,
     ) => {
       const control = { release: () => {} };
       axiosMock.onGet(groupsUrl).replyOnce(200, initial);
@@ -1134,6 +1232,8 @@ describe('CompetencyAssociationsProvider', () => {
       const reads = mockGroupsReads(twoCoursesWithCriteriaResponse, {
         groups: twoCoursesWithCriteriaResponse.groups.filter((group) => group.id !== 2 && group.id !== 20),
         criteria: twoCoursesWithCriteriaResponse.criteria.filter((criterion) => criterion.groupId === 10),
+        criteria_count: 1,
+        total_criteria_count: 1,
       });
       axiosMock.onGet(getCourseOutlineIndexApiUrl(courseB)).reply(200, outlineFixture);
       renderProvider();
@@ -1198,6 +1298,8 @@ describe('CompetencyAssociationsProvider', () => {
       const reads = mockGroupsReads(twoCoursesWithCriteriaResponse, {
         groups: twoCoursesWithCriteriaResponse.groups.filter((group) => group.id !== 1 && group.id !== 10),
         criteria: twoCoursesWithCriteriaResponse.criteria.filter((criterion) => criterion.groupId === 20),
+        criteria_count: 1,
+        total_criteria_count: 1,
       });
       await renderWithFocusOnGroup10();
 
@@ -1237,6 +1339,8 @@ describe('CompetencyAssociationsProvider', () => {
       axiosMock.onGet(groupsUrl).reply(200, {
         groups: singleGroupResponse.groups.filter((group) => group.id !== 10),
         criteria: [],
+        criteria_count: 0,
+        total_criteria_count: 0,
       });
       axiosMock.onGet(profileUrl).reply(200, profileResponse);
       axiosMock.onGet(getCourseOutlineIndexApiUrl(courseA)).reply(200, outlineFixture);
